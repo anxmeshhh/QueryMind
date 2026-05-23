@@ -1,9 +1,10 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useState, useEffect, useRef } from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useState, useRef } from "react";
 import { Upload, X } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
 import { ActivityLog, type LogEntry } from "@/components/ActivityLog";
-import { scanLog, discoveredQueries } from "@/lib/mock-data";
+import { scanFiles, type SSEEvent } from "@/lib/api";
+import type { DiscoveredQuery } from "@/lib/mock-data";
 
 export const Route = createFileRoute("/scan")({
   head: () => ({
@@ -18,6 +19,7 @@ export const Route = createFileRoute("/scan")({
 interface UploadedFile {
   name: string;
   size: number;
+  content: string;
 }
 
 function ScanPage() {
@@ -26,44 +28,70 @@ function ScanPage() {
   const [scanning, setScanning] = useState(false);
   const [log, setLog] = useState<LogEntry[]>([]);
   const [done, setDone] = useState(false);
+  const [queries, setQueries] = useState<DiscoveredQuery[]>([]);
+  const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (!scanning) return;
-    setLog([]);
-    setDone(false);
-    let cancelled = false;
-    scanLog.forEach((entry, i) => {
-      setTimeout(() => {
-        if (cancelled) return;
-        setLog((prev) => [...prev, entry]);
-        if (i === scanLog.length - 1) {
-          setDone(true);
-          setScanning(false);
-        }
-      }, 250 + i * 350);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [scanning]);
-
-  const onFiles = (list: FileList | null) => {
-    if (!list) return;
-    const next = Array.from(list).map((f) => ({ name: f.name, size: f.size }));
-    setFiles((prev) => [...prev, ...next]);
+  const readFiles = async (fileList: FileList | null) => {
+    if (!fileList) return;
+    const newFiles: UploadedFile[] = [];
+    for (const f of Array.from(fileList)) {
+      const content = await f.text();
+      newFiles.push({ name: f.name, size: f.size, content });
+    }
+    setFiles((prev) => [...prev, ...newFiles]);
   };
 
   const runScan = () => {
     if (files.length === 0) {
-      setFiles([
-        { name: "models/user.py", size: 2841 },
-        { name: "routes/orders.py", size: 5219 },
-        { name: "utils/reports.py", size: 1432 },
-        { name: ".env", size: 184 },
-      ]);
+      setError("Upload files first");
+      return;
     }
+
     setScanning(true);
+    setLog([]);
+    setDone(false);
+    setQueries([]);
+    setError(null);
+
+    scanFiles(
+      files.map((f) => ({ name: f.name, content: f.content })),
+      (event: SSEEvent) => {
+        const entry: LogEntry = {
+          time: event.time ? `${event.time}s` : "",
+          agent: event.agent || "scanner",
+          message: event.message || "",
+          level: event.type === "complete" ? "success" : event.type === "agent_error" ? "critical" : "info",
+        };
+        setLog((prev) => [...prev, entry]);
+
+        if (event.type === "complete" && event.result?.queries) {
+          const discovered: DiscoveredQuery[] = event.result.queries.map((q: any) => ({
+            severity: "warning" as const,
+            path: `${q.file}:${q.line}`,
+            preview: q.sql.slice(0, 80) + (q.sql.length > 80 ? "..." : ""),
+            language: q.language,
+            sql: q.sql,
+          }));
+          setQueries(discovered);
+          setDone(true);
+          setScanning(false);
+        }
+
+        if (event.type === "error") {
+          setError(event.message || "Scan failed");
+          setScanning(false);
+        }
+      },
+      (errMsg) => {
+        setError(errMsg);
+        setScanning(false);
+        setLog((prev) => [
+          ...prev,
+          { time: "", agent: "error", message: errMsg, level: "critical" },
+        ]);
+      },
+    );
   };
 
   const right = (
@@ -90,7 +118,7 @@ function ScanPage() {
           onDrop={(e) => {
             e.preventDefault();
             setDragOver(false);
-            onFiles(e.dataTransfer.files);
+            readFiles(e.dataTransfer.files);
           }}
           onClick={() => inputRef.current?.click()}
           className={`bg-panel rounded-lg flex flex-col items-center justify-center cursor-pointer transition-colors h-[180px] ${
@@ -109,9 +137,15 @@ function ScanPage() {
             type="file"
             multiple
             hidden
-            onChange={(e) => onFiles(e.target.files)}
+            onChange={(e) => readFiles(e.target.files)}
           />
         </div>
+
+        {error && (
+          <div className="mt-4 p-3 text-critical text-sm font-mono bg-panel border border-critical/30 rounded-lg">
+            {error}
+          </div>
+        )}
 
         {files.length > 0 && (
           <div className="mt-4 bg-panel border border-border rounded-lg divide-y divide-elevated">
@@ -148,13 +182,13 @@ function ScanPage() {
                 <div className="flex items-center gap-2">
                   <span className="section-label">Queries Found</span>
                   <span className="text-[11px] font-mono bg-secondary text-text-secondary px-1.5 py-0.5 rounded">
-                    {done ? discoveredQueries.length : 0}
+                    {done ? queries.length : 0}
                   </span>
                 </div>
               </div>
               <div className="flex-1 overflow-auto qm-scroll">
                 {done &&
-                  discoveredQueries.map((q, i) => (
+                  queries.map((q, i) => (
                     <div
                       key={i}
                       className="px-4 py-2.5 border-b border-elevated flex items-center gap-3 hover:bg-elevated/60 transition-colors"
@@ -177,17 +211,18 @@ function ScanPage() {
                       <span className="text-[11px] font-mono bg-secondary text-text-secondary px-1.5 py-0.5 rounded">
                         {q.language}
                       </span>
-                      <button className="text-primary text-xs font-medium hover:text-primary/80 transition-colors shrink-0">
+                      <Link
+                        to="/quick"
+                        search={{ q: q.sql }}
+                        className="text-primary text-xs font-medium hover:text-primary/80 transition-colors shrink-0"
+                      >
                         Analyze →
-                      </button>
+                      </Link>
                     </div>
                   ))}
               </div>
-              {done && (
+              {done && queries.length > 0 && (
                 <div className="border-t border-border p-3 flex items-center gap-2 justify-end">
-                  <button className="bg-secondary text-text-primary text-sm font-medium px-4 py-1.5 rounded-md hover:bg-elevated transition-colors">
-                    Export Report
-                  </button>
                   <button className="bg-primary text-primary-foreground text-sm font-medium px-4 py-1.5 rounded-md hover:bg-primary/90 transition-colors">
                     Analyze All
                   </button>

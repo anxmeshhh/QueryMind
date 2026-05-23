@@ -1,9 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, useEffect } from "react";
+import { useState, useRef } from "react";
 import { TopBar } from "@/components/TopBar";
 import { ActivityLog, type LogEntry } from "@/components/ActivityLog";
 import { ResultsPanel, type AnalysisResult } from "@/components/ResultsPanel";
-import { analysisLog, mockResult, sampleQueries } from "@/lib/mock-data";
+import { sampleQueries, buildResultFromEvents } from "@/lib/mock-data";
+import { analyzeQuery, type SSEEvent } from "@/lib/api";
 
 export const Route = createFileRoute("/quick")({
   head: () => ({
@@ -35,30 +36,67 @@ function QuickPage() {
   const [running, setRunning] = useState(false);
   const [log, setLog] = useState<LogEntry[]>([]);
   const [result, setResult] = useState<AnalysisResult | null>(null);
-
-  useEffect(() => {
-    if (!running) return;
-    setLog([]);
-    setResult(null);
-    let cancelled = false;
-    analysisLog.forEach((entry, i) => {
-      setTimeout(() => {
-        if (cancelled) return;
-        setLog((prev) => [...prev, entry]);
-        if (i === analysisLog.length - 1) {
-          setResult(mockResult);
-          setRunning(false);
-        }
-      }, 250 + i * 350);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [running]);
+  const [error, setError] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const eventsRef = useRef<SSEEvent[]>([]);
 
   const runAnalysis = () => {
+    const sql = query.trim() || DEFAULT_QUERY;
     if (!query.trim()) setQuery(DEFAULT_QUERY);
+
     setRunning(true);
+    setLog([]);
+    setResult(null);
+    setError(null);
+    eventsRef.current = [];
+
+    abortRef.current = analyzeQuery(
+      sql,
+      dialect,
+      schema,
+      (event: SSEEvent) => {
+        eventsRef.current.push(event);
+
+        // Convert SSE event to log entry
+        const agentLevel = (e: SSEEvent): LogEntry["level"] => {
+          if (e.type === "agent_error" || e.type === "error") return "critical";
+          if (e.severity === "critical") return "critical";
+          if (e.severity === "medium") return "warning";
+          if (e.agent === "index" || e.agent === "optimize") return "index";
+          if (e.type === "complete") return "success";
+          return "info";
+        };
+
+        const entry: LogEntry = {
+          time: event.time ? `${event.time}s` : "",
+          agent: event.agent || "system",
+          message: event.message || "",
+          level: agentLevel(event),
+        };
+
+        setLog((prev) => [...prev, entry]);
+
+        // On complete, build the result
+        if (event.type === "complete") {
+          const built = buildResultFromEvents(eventsRef.current);
+          if (built) setResult(built);
+          setRunning(false);
+        }
+
+        if (event.type === "error") {
+          setError(event.message || "Unknown error");
+          setRunning(false);
+        }
+      },
+      (errMsg) => {
+        setError(errMsg);
+        setRunning(false);
+        setLog((prev) => [
+          ...prev,
+          { time: "", agent: "error", message: errMsg, level: "critical" },
+        ]);
+      },
+    );
   };
 
   const dialectSelect = (
@@ -131,6 +169,11 @@ function QuickPage() {
 
         {/* Right: Results */}
         <section className="min-h-0 flex flex-col">
+          {error && (
+            <div className="p-4 text-critical text-sm font-mono border-b border-border">
+              Error: {error}
+            </div>
+          )}
           <ResultsPanel result={result} />
         </section>
       </div>

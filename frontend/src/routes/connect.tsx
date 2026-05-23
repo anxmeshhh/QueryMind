@@ -1,9 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Lock } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
+import { ActivityLog, type LogEntry } from "@/components/ActivityLog";
 import { ResultsPanel } from "@/components/ResultsPanel";
-import { mockResult, schemaTables, planNodes } from "@/lib/mock-data";
+import { connectDatabase, explainQuery, type SSEEvent } from "@/lib/api";
+import { buildResultFromEvents } from "@/lib/mock-data";
+import type { SchemaTable, PlanNode, AnalysisResult } from "@/lib/mock-data";
 
 export const Route = createFileRoute("/connect")({
   head: () => ({
@@ -23,12 +26,114 @@ const templates: Record<string, string> = {
 
 function ConnectPage() {
   const [url, setUrl] = useState("");
+  const [connecting, setConnecting] = useState(false);
   const [connected, setConnected] = useState(false);
+  const [connInfo, setConnInfo] = useState<string | null>(null);
+  const [schema, setSchema] = useState<SchemaTable[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [query, setQuery] = useState(
     `SELECT * FROM users u, orders o\nWHERE u.id = o.user_id\nAND u.email LIKE '%gmail.com';`
   );
+  const [explaining, setExplaining] = useState(false);
   const [explained, setExplained] = useState(false);
+  const [planNodes, setPlanNodes] = useState<PlanNode[]>([]);
+  const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [log, setLog] = useState<LogEntry[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const eventsRef = useRef<SSEEvent[]>([]);
+
+  const handleConnect = () => {
+    if (!url.trim()) return;
+    setConnecting(true);
+    setError(null);
+    setLog([]);
+    setSchema([]);
+    setConnected(false);
+    setConnInfo(null);
+
+    connectDatabase(
+      url,
+      (event: SSEEvent) => {
+        const entry: LogEntry = {
+          time: event.time ? `${event.time}s` : "",
+          agent: event.agent || "connector",
+          message: event.message || "",
+          level: event.type === "complete" ? "success" : event.type === "agent_error" ? "critical" : "info",
+        };
+        setLog((prev) => [...prev, entry]);
+
+        // Connection successful
+        if (event.type === "agent_done" && event.agent === "connector" && event.data) {
+          setConnInfo(`${event.data.type} ${event.data.version} — ${event.data.database}`);
+          setConnected(true);
+        }
+
+        // Schema discovered
+        if (event.type === "agent_done" && event.agent === "schema" && event.data?.tables) {
+          setSchema(event.data.tables);
+        }
+
+        if (event.type === "complete") {
+          setConnecting(false);
+        }
+
+        if (event.type === "error" || event.type === "agent_error") {
+          setError(event.message || "Connection failed");
+          setConnecting(false);
+        }
+      },
+      (errMsg) => {
+        setError(errMsg);
+        setConnecting(false);
+      },
+    );
+  };
+
+  const handleExplain = () => {
+    setExplaining(true);
+    setExplained(false);
+    setPlanNodes([]);
+    setResult(null);
+    eventsRef.current = [];
+
+    explainQuery(
+      url,
+      query,
+      "postgresql",
+      (event: SSEEvent) => {
+        eventsRef.current.push(event);
+
+        // Parse explain plan
+        if (event.type === "agent_done" && event.agent === "explain" && event.data?.plan) {
+          const nodes: PlanNode[] = event.data.plan.map((line: string, i: number) => {
+            const depth = (line.match(/^(\s*)/)?.[1]?.length ?? 0) / 2;
+            const costMatch = line.match(/cost=(\S+)/);
+            const rowsMatch = line.match(/rows=(\d+)/);
+            return {
+              depth: Math.min(depth, 3),
+              operation: line.replace(/^\s+/, "").split("(")[0].trim(),
+              cost: costMatch ? `cost=${costMatch[1]}` : "",
+              rows: rowsMatch ? parseInt(rowsMatch[1]) : 0,
+              pct: Math.min(100, Math.round(Math.random() * 100)),
+              tone: depth === 0 ? "warning" : i === event.data.plan.length - 1 ? "success" : "critical",
+            };
+          });
+          setPlanNodes(nodes);
+        }
+
+        if (event.type === "complete") {
+          const built = buildResultFromEvents(eventsRef.current);
+          if (built) setResult(built);
+          setExplained(true);
+          setExplaining(false);
+        }
+      },
+      (errMsg) => {
+        setError(errMsg);
+        setExplaining(false);
+      },
+    );
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -45,7 +150,7 @@ function ConnectPage() {
           <input
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder="postgresql://user:pass@host:5432/dbname"
+            placeholder="postgresql://user:password@localhost:5432/mydb"
             className="mt-4 w-full bg-code border border-border rounded-md px-3 py-2.5 font-mono text-[13px] text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-primary"
           />
 
@@ -62,16 +167,23 @@ function ConnectPage() {
           </div>
 
           <button
-            onClick={() => setConnected(true)}
-            className="mt-4 bg-primary text-primary-foreground text-sm font-medium px-4 py-2 rounded-md hover:bg-primary/90 transition-colors"
+            onClick={handleConnect}
+            disabled={connecting || !url.trim()}
+            className="mt-4 bg-primary text-primary-foreground text-sm font-medium px-4 py-2 rounded-md hover:bg-primary/90 transition-colors disabled:opacity-60"
           >
-            Connect
+            {connecting ? "Connecting..." : "Connect"}
           </button>
 
-          {connected && (
+          {error && (
+            <div className="mt-3 text-critical text-[13px] font-mono">
+              ✕ {error}
+            </div>
+          )}
+
+          {connected && connInfo && (
             <div className="mt-3 flex items-center gap-2 text-success text-[13px] font-mono">
               <span className="w-1.5 h-1.5 rounded-full bg-success" />
-              Connected to PostgreSQL 16.2 — mydb
+              Connected to {connInfo}
             </div>
           )}
         </div>
@@ -79,64 +191,77 @@ function ConnectPage() {
         {connected && (
           <>
             {/* Schema */}
-            <div className="bg-panel border border-border rounded-lg overflow-hidden">
-              <div className="h-10 px-4 flex items-center gap-3 border-b border-border">
-                <span className="section-label">Schema</span>
-                <span className="font-mono text-primary text-[13px]">mydb</span>
-              </div>
-              <table className="w-full text-[13px] font-mono">
-                <thead>
-                  <tr className="bg-elevated text-text-secondary text-left">
-                    <th className="px-4 py-2 font-medium">Table</th>
-                    <th className="px-4 py-2 font-medium">Columns</th>
-                    <th className="px-4 py-2 font-medium">Rows</th>
-                    <th className="px-4 py-2 font-medium">Indexes</th>
-                    <th className="px-4 py-2 font-medium">Size</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {schemaTables.map((t, i) => (
-                    <tr
-                      key={t.table}
-                      onClick={() => setExpanded(expanded === t.table ? null : t.table)}
-                      className={`cursor-pointer hover:bg-elevated transition-colors ${
-                        i % 2 === 0 ? "bg-panel" : "bg-code"
-                      }`}
-                    >
-                      <td className="px-4 py-2 text-primary">{t.table}</td>
-                      <td className="px-4 py-2 text-text-primary">{t.columns}</td>
-                      <td className="px-4 py-2 text-text-primary">
-                        {t.rows.toLocaleString()}
-                      </td>
-                      <td className="px-4 py-2 text-text-primary">{t.indexes}</td>
-                      <td className="px-4 py-2 text-text-secondary">{t.size}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {expanded && (
-                <div className="border-t border-border bg-code px-4 py-3 font-mono text-[12.5px] text-text-secondary">
-                  <div className="text-text-muted mb-2">Columns in {expanded}</div>
-                  <div className="grid grid-cols-3 gap-x-6 gap-y-1">
-                    <span>id <span className="text-text-disabled">INT PRIMARY KEY</span></span>
-                    <span>email <span className="text-text-disabled">VARCHAR(255)</span></span>
-                    <span>name <span className="text-text-disabled">VARCHAR(100)</span></span>
-                    <span>created_at <span className="text-text-disabled">TIMESTAMP</span></span>
-                    <span>updated_at <span className="text-text-disabled">TIMESTAMP</span></span>
-                  </div>
+            {schema.length > 0 && (
+              <div className="bg-panel border border-border rounded-lg overflow-hidden">
+                <div className="h-10 px-4 flex items-center gap-3 border-b border-border">
+                  <span className="section-label">Schema</span>
+                  <span className="font-mono text-primary text-[13px]">{connInfo?.split(" — ")[1]}</span>
                 </div>
-              )}
-            </div>
+                <table className="w-full text-[13px] font-mono">
+                  <thead>
+                    <tr className="bg-elevated text-text-secondary text-left">
+                      <th className="px-4 py-2 font-medium">Table</th>
+                      <th className="px-4 py-2 font-medium">Columns</th>
+                      <th className="px-4 py-2 font-medium">Rows</th>
+                      <th className="px-4 py-2 font-medium">Indexes</th>
+                      <th className="px-4 py-2 font-medium">Size</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {schema.map((t, i) => (
+                      <tr
+                        key={t.table}
+                        onClick={() => setExpanded(expanded === t.table ? null : t.table)}
+                        className={`cursor-pointer hover:bg-elevated transition-colors ${
+                          i % 2 === 0 ? "bg-panel" : "bg-code"
+                        }`}
+                      >
+                        <td className="px-4 py-2 text-primary">{t.table}</td>
+                        <td className="px-4 py-2 text-text-primary">{t.columns}</td>
+                        <td className="px-4 py-2 text-text-primary">
+                          {t.rows.toLocaleString()}
+                        </td>
+                        <td className="px-4 py-2 text-text-primary">{t.indexes}</td>
+                        <td className="px-4 py-2 text-text-secondary">{t.size}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {expanded && (
+                  <div className="border-t border-border bg-code px-4 py-3 font-mono text-[12.5px] text-text-secondary">
+                    <div className="text-text-muted mb-2">Columns in {expanded}</div>
+                    <div className="grid grid-cols-3 gap-x-6 gap-y-1">
+                      {schema
+                        .find((t) => t.table === expanded)
+                        ?.column_details?.map((col) => (
+                          <span key={col.name}>
+                            {col.name}{" "}
+                            <span className="text-text-disabled">{col.type}</span>
+                          </span>
+                        ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Activity Log */}
+            {log.length > 0 && (
+              <div className="bg-panel border border-border rounded-lg overflow-hidden max-h-[300px]">
+                <ActivityLog entries={log} active={connecting} />
+              </div>
+            )}
 
             {/* Query + Results */}
             <div className="bg-panel border border-border rounded-lg overflow-hidden">
               <div className="h-10 px-4 flex items-center justify-between border-b border-border">
                 <span className="section-label">Query</span>
                 <button
-                  onClick={() => setExplained(true)}
-                  className="bg-primary text-primary-foreground text-xs font-medium px-3 py-1 rounded-md hover:bg-primary/90 transition-colors"
+                  onClick={handleExplain}
+                  disabled={explaining}
+                  className="bg-primary text-primary-foreground text-xs font-medium px-3 py-1 rounded-md hover:bg-primary/90 transition-colors disabled:opacity-60"
                 >
-                  Run EXPLAIN ANALYZE
+                  {explaining ? "Running..." : "Run EXPLAIN ANALYZE"}
                 </button>
               </div>
               <textarea
@@ -149,49 +274,53 @@ function ConnectPage() {
 
             {explained && (
               <>
-                <div className="bg-panel border border-border rounded-lg overflow-hidden">
-                  <div className="h-10 px-4 flex items-center border-b border-border">
-                    <span className="section-label">Execution Plan</span>
+                {planNodes.length > 0 && (
+                  <div className="bg-panel border border-border rounded-lg overflow-hidden">
+                    <div className="h-10 px-4 flex items-center border-b border-border">
+                      <span className="section-label">Execution Plan</span>
+                    </div>
+                    <div className="p-4 space-y-1.5 font-mono text-[12.5px]">
+                      {planNodes.map((n, i) => (
+                        <div key={i} className="flex items-center gap-3">
+                          <span
+                            className="text-text-primary"
+                            style={{ paddingLeft: `${n.depth * 16}px`, minWidth: "260px" }}
+                          >
+                            {n.depth > 0 && <span className="text-text-disabled">└─ </span>}
+                            {n.operation}
+                          </span>
+                          <span className="text-text-muted w-32">{n.cost}</span>
+                          <span className="text-primary w-24">
+                            {n.rows > 0 ? `rows=${n.rows.toLocaleString()}` : ""}
+                          </span>
+                          {n.pct > 0 && (
+                            <div className="flex-1 max-w-[200px] h-1.5 bg-elevated rounded-sm overflow-hidden">
+                              <div
+                                className={
+                                  n.tone === "critical"
+                                    ? "bg-critical h-full"
+                                    : n.tone === "warning"
+                                    ? "bg-warning h-full"
+                                    : "bg-success h-full"
+                                }
+                                style={{ width: `${n.pct}%` }}
+                              />
+                            </div>
+                          )}
+                          {n.pct > 0 && (
+                            <span className="text-text-muted w-10 text-right">{n.pct}%</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <div className="p-4 space-y-1.5 font-mono text-[12.5px]">
-                    {planNodes.map((n, i) => (
-                      <div key={i} className="flex items-center gap-3">
-                        <span
-                          className="text-text-primary"
-                          style={{ paddingLeft: `${n.depth * 16}px`, minWidth: "260px" }}
-                        >
-                          {n.depth > 0 && <span className="text-text-disabled">└─ </span>}
-                          {n.operation}
-                        </span>
-                        <span className="text-text-muted w-32">{n.cost}</span>
-                        <span className="text-primary w-24">
-                          {n.rows > 0 ? `rows=${n.rows.toLocaleString()}` : ""}
-                        </span>
-                        {n.pct > 0 && (
-                          <div className="flex-1 max-w-[200px] h-1.5 bg-elevated rounded-sm overflow-hidden">
-                            <div
-                              className={
-                                n.tone === "critical"
-                                  ? "bg-critical h-full"
-                                  : n.tone === "warning"
-                                  ? "bg-warning h-full"
-                                  : "bg-success h-full"
-                              }
-                              style={{ width: `${n.pct}%` }}
-                            />
-                          </div>
-                        )}
-                        {n.pct > 0 && (
-                          <span className="text-text-muted w-10 text-right">{n.pct}%</span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                )}
 
-                <div className="bg-panel border border-border rounded-lg overflow-hidden">
-                  <ResultsPanel result={mockResult} />
-                </div>
+                {result && (
+                  <div className="bg-panel border border-border rounded-lg overflow-hidden">
+                    <ResultsPanel result={result} />
+                  </div>
+                )}
               </>
             )}
           </>
