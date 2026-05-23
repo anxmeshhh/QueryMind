@@ -32,7 +32,7 @@ export function SchemaERD({ tables, ormModels = [], title = "Discovered Database
           {tables.length} tables · {tables.reduce((a, t) => a + (t.columns?.length || 0), 0)} columns
         </span>
       </div>
-      <div className="p-4 qm-erd-grid">
+      <div className="p-6 qm-erd-grid">
         {tables.map((table, i) => (
           <div key={i} className="qm-schema-card qm-fade-in" style={{ animationDelay: `${i * 60}ms` }}>
             <div className="qm-schema-card-header">
@@ -49,9 +49,9 @@ export function SchemaERD({ tables, ormModels = [], title = "Discovered Database
                 const isFk = (table.foreign_keys || []).some((fk) => fk.column === col.name);
                 return (
                   <div key={j} className="qm-schema-col">
-                    {isPk && <Key size={9} className="text-yellow-500" />}
-                    {isFk && !isPk && <ArrowUpRight size={9} className="text-blue-400" />}
-                    {!isPk && !isFk && <span className="w-[9px]" />}
+                    {isPk && <Key size={10} className="text-yellow-500" />}
+                    {isFk && !isPk && <ArrowUpRight size={10} className="text-blue-400" />}
+                    {!isPk && !isFk && <span className="w-[10px]" />}
                     <span className={isPk ? "qm-schema-col-pk" : isFk ? "qm-schema-col-fk" : ""}>
                       {col.name}
                     </span>
@@ -67,10 +67,10 @@ export function SchemaERD({ tables, ormModels = [], title = "Discovered Database
             </div>
             {/* FK Relationships */}
             {(table.foreign_keys || []).length > 0 && (
-              <div className="px-3 py-2 border-t border-border space-y-1">
+              <div className="px-4 py-2.5 border-t border-border space-y-1.5">
                 {table.foreign_keys!.map((fk, k) => (
-                  <div key={k} className="text-[9px] font-mono text-info flex items-center gap-1">
-                    <ArrowUpRight size={8} /> {fk.column} → {fk.ref_table}.{fk.ref_column}
+                  <div key={k} className="text-[10px] font-mono text-info flex items-center gap-1.5">
+                    <ArrowUpRight size={9} /> {fk.column} → {fk.ref_table}.{fk.ref_column}
                   </div>
                 ))}
               </div>

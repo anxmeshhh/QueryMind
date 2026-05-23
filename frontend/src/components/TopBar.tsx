@@ -43,6 +43,7 @@ export function TopBar({
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isBadgesOpen, setIsBadgesOpen] = useState(false);
   const [xp, setXp] = useState(() => {
+    if (typeof window === "undefined") return 0;
     try {
       return parseInt(localStorage.getItem("qm_xp") || "0");
     } catch {

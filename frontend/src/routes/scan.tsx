@@ -101,7 +101,10 @@ function ScanPage() {
   const [selectedOptQuery, setSelectedOptQuery] = useState<CodebaseOptimization | null>(null);
 
   // Gamification
-  const [xp, setXp] = useState(() => parseInt(localStorage.getItem("qm_xp") || "0"));
+  const [xp, setXp] = useState(() => {
+    if (typeof window === "undefined") return 0;
+    try { return parseInt(localStorage.getItem("qm_xp") || "0"); } catch { return 0; }
+  });
   const [recentScans, setRecentScans] = useState<DBAnalysis[]>([]);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
