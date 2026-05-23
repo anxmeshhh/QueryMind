@@ -1,4 +1,6 @@
 import { CopyButton } from "./CopyButton";
+import { useState } from "react";
+import { ChevronRight, ShieldCheck, ShieldAlert, Download, FileText } from "lucide-react";
 
 export interface Issue {
   severity: "CRITICAL" | "MEDIUM" | "LOW";
@@ -12,6 +14,15 @@ export interface IndexRec {
   note: string;
 }
 
+export interface GuardReport {
+  safe: boolean;
+  safety_score: number;
+  warnings: string[];
+  blocked: string[];
+  approved: string[];
+  unchanged_note?: string;
+}
+
 export interface AnalysisResult {
   scoreBefore: number;
   scoreAfter: number;
@@ -19,6 +30,7 @@ export interface AnalysisResult {
   issues: Issue[];
   optimizedSql: string;
   indexes: IndexRec[];
+  guard?: GuardReport;
 }
 
 const sevStyles: Record<Issue["severity"], string> = {
@@ -26,9 +38,6 @@ const sevStyles: Record<Issue["severity"], string> = {
   MEDIUM: "bg-warning/15 text-warning",
   LOW: "bg-info/15 text-info",
 };
-
-import { useState } from "react";
-import { ChevronRight } from "lucide-react";
 
 export function ResultsPanel({ result }: { result: AnalysisResult | null }) {
   if (!result) {
@@ -38,6 +47,8 @@ export function ResultsPanel({ result }: { result: AnalysisResult | null }) {
       </div>
     );
   }
+
+  const guard = result.guard;
 
   return (
     <div className="h-full overflow-auto qm-scroll">
@@ -72,6 +83,67 @@ export function ResultsPanel({ result }: { result: AnalysisResult | null }) {
         </div>
       </div>
 
+      {/* Schema Guard Report */}
+      {guard && (
+        <div className="border-b border-border">
+          <div className="px-4 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {guard.safe ? (
+                <ShieldCheck size={14} className="text-success" />
+              ) : (
+                <ShieldAlert size={14} className="text-warning" />
+              )}
+              <span className="section-label">Schema Guard</span>
+            </div>
+            <div className={`qm-safety-badge ${
+              guard.safety_score >= 80 ? "qm-safety-safe" :
+              guard.safety_score >= 50 ? "qm-safety-warn" : "qm-safety-danger"
+            }`}>
+              {guard.safety_score}/100
+            </div>
+          </div>
+
+          <div className="px-4 pb-3 space-y-2">
+            {guard.unchanged_note && (
+              <div className="bg-success/8 border border-success/15 rounded-md px-3 py-2 text-success text-[12px] font-mono flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-success shrink-0" />
+                {guard.unchanged_note}
+              </div>
+            )}
+            {guard.blocked.length > 0 && (
+              <div className="space-y-1">
+                <div className="text-[10px] font-mono text-text-disabled uppercase tracking-wider">Blocked (duplicates)</div>
+                {guard.blocked.map((b, i) => (
+                  <div key={i} className="bg-critical/8 border border-critical/15 rounded-md px-3 py-1.5 text-critical text-[11px] font-mono">
+                    {b}
+                  </div>
+                ))}
+              </div>
+            )}
+            {guard.warnings.length > 0 && (
+              <div className="space-y-1">
+                <div className="text-[10px] font-mono text-text-disabled uppercase tracking-wider">Warnings</div>
+                {guard.warnings.map((w, i) => (
+                  <div key={i} className="bg-warning/8 border border-warning/15 rounded-md px-3 py-1.5 text-warning text-[11px] font-mono">
+                    {w}
+                  </div>
+                ))}
+              </div>
+            )}
+            {guard.approved.length > 0 && (
+              <div className="space-y-1">
+                <div className="text-[10px] font-mono text-text-disabled uppercase tracking-wider">Approved</div>
+                {guard.approved.map((a, i) => (
+                  <div key={i} className="bg-success/8 border border-success/15 rounded-md px-3 py-1.5 text-success text-[11px] font-mono">
+                    ✓ {a}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Issues */}
       <div className="border-b border-border">
         <div className="px-4 py-3 flex items-center gap-2">
@@ -97,7 +169,7 @@ export function ResultsPanel({ result }: { result: AnalysisResult | null }) {
       </div>
 
       {/* Indexes */}
-      <div>
+      <div className="border-b border-border">
         <div className="px-4 py-3 flex items-center gap-2">
           <span className="section-label">Indexes</span>
           <span className="text-[11px] font-mono bg-secondary text-text-secondary px-1.5 py-0.5 rounded">
@@ -117,6 +189,27 @@ export function ResultsPanel({ result }: { result: AnalysisResult | null }) {
               <div className="text-text-secondary text-xs">{idx.note}</div>
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* Export Actions */}
+      <div className="px-4 py-4 space-y-2">
+        <div className="section-label mb-2">Export</div>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={() => exportAsMarkdown(result)}
+            className="flex items-center justify-center gap-1.5 bg-code border border-border rounded-md py-2 text-text-secondary text-[12px] font-mono hover:bg-elevated hover:text-primary transition-all"
+          >
+            <FileText size={12} />
+            Markdown Report
+          </button>
+          <button
+            onClick={() => exportIndexScript(result)}
+            className="flex items-center justify-center gap-1.5 bg-code border border-border rounded-md py-2 text-text-secondary text-[12px] font-mono hover:bg-elevated hover:text-primary transition-all"
+          >
+            <Download size={12} />
+            Index Script (.sql)
+          </button>
         </div>
       </div>
     </div>
@@ -169,4 +262,82 @@ export function CodeBlock({ code }: { code: string }) {
       </pre>
     </div>
   );
+}
+
+// ── Export helpers ──────────────────────────────
+
+function exportAsMarkdown(result: AnalysisResult) {
+  const lines: string[] = [
+    "# QueryMind — Analysis Report",
+    "",
+    `## Performance Score: ${result.scoreBefore} → ${result.scoreAfter}`,
+    `Estimated improvement: ${result.improvement}`,
+    "",
+  ];
+
+  if (result.guard) {
+    lines.push(`## Schema Guard — Safety: ${result.guard.safety_score}/100`);
+    if (result.guard.unchanged_note) lines.push(`> ${result.guard.unchanged_note}`);
+    if (result.guard.blocked.length > 0) {
+      lines.push("### Blocked Indexes");
+      result.guard.blocked.forEach((b) => lines.push(`- ❌ ${b}`));
+    }
+    if (result.guard.warnings.length > 0) {
+      lines.push("### Warnings");
+      result.guard.warnings.forEach((w) => lines.push(`- ⚠️ ${w}`));
+    }
+    lines.push("");
+  }
+
+  if (result.issues.length > 0) {
+    lines.push("## Issues Found");
+    result.issues.forEach((issue) => {
+      lines.push(`### [${issue.severity}] ${issue.title}`);
+      lines.push(issue.description);
+      lines.push("");
+    });
+  }
+
+  if (result.optimizedSql) {
+    lines.push("## Optimized Query");
+    lines.push("```sql");
+    lines.push(result.optimizedSql);
+    lines.push("```");
+    lines.push("");
+  }
+
+  if (result.indexes.length > 0) {
+    lines.push("## Recommended Indexes");
+    result.indexes.forEach((idx) => {
+      lines.push(`### ${idx.table}`);
+      lines.push("```sql");
+      lines.push(idx.sql);
+      lines.push("```");
+      lines.push(idx.note);
+      lines.push("");
+    });
+  }
+
+  downloadFile("querymind-report.md", lines.join("\n"));
+}
+
+function exportIndexScript(result: AnalysisResult) {
+  const lines = [
+    "-- QueryMind — Recommended Index Script",
+    `-- Generated: ${new Date().toISOString()}`,
+    `-- Performance: ${result.scoreBefore} → ${result.scoreAfter}`,
+    "",
+    ...result.indexes.map((idx) => `-- ${idx.note}\n${idx.sql};\n`),
+  ];
+  downloadFile("querymind-indexes.sql", lines.join("\n"));
+}
+
+function downloadFile(filename: string, content: string) {
+  const blob = new Blob([content], { type: "text/plain" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }

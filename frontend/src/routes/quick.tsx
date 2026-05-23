@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useRef, useEffect } from "react";
-import { Trash2, HelpCircle } from "lucide-react";
+import { Trash2, HelpCircle, Database } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
 import { AuthGuard } from "@/components/AuthGuard";
 import { ActivityLog, type LogEntry } from "@/components/ActivityLog";
@@ -55,9 +55,21 @@ function QuickPage() {
   
   const abortRef = useRef<AbortController | null>(null);
   const eventsRef = useRef<SSEEvent[]>([]);
+  const [hasGlobalSchema, setHasGlobalSchema] = useState(false);
 
   // Load state on mount (restoring from search parameter or localStorage)
   useEffect(() => {
+    // Load global schema from Connect/Scan (cross-mode sharing)
+    try {
+      const globalSchema = localStorage.getItem("qm_global_schema");
+      if (globalSchema) {
+        const tables = JSON.parse(globalSchema);
+        if (Array.isArray(tables) && tables.length > 0) {
+          setHasGlobalSchema(true);
+        }
+      }
+    } catch {}
+
     if (q) {
       setQuery(q);
       // Auto-trigger analysis for imported queries
@@ -171,10 +183,28 @@ function QuickPage() {
     setError(null);
     eventsRef.current = [];
 
+    // If no manual schema, inject global schema from Connect/Scan
+    let effectiveSchema = targetSchema;
+    if (!effectiveSchema.trim() && hasGlobalSchema) {
+      try {
+        const globalSchema = localStorage.getItem("qm_global_schema");
+        if (globalSchema) {
+          const tables = JSON.parse(globalSchema);
+          // Convert schema tables to CREATE TABLE DDL for the backend
+          effectiveSchema = tables.map((t: any) => {
+            const cols = (t.column_details || t.columns || []).map((c: any) =>
+              typeof c === "string" ? c : `${c.name} ${c.type || "TEXT"}${c.nullable === false ? " NOT NULL" : ""}`
+            ).join(", ");
+            return `CREATE TABLE ${t.table || t.name} (${cols});`;
+          }).join("\n");
+        }
+      } catch {}
+    }
+
     abortRef.current = analyzeQuery(
       sql,
       targetDialect,
-      targetSchema,
+      effectiveSchema,
       (event: SSEEvent) => {
         eventsRef.current.push(event);
 
@@ -277,7 +307,14 @@ function QuickPage() {
                 Query
               </TabBtn>
               <TabBtn active={tab === "schema"} onClick={() => setTab("schema")}>
-                Schema
+                <span className="flex items-center gap-1.5">
+                  Schema
+                  {hasGlobalSchema && !schema.trim() && (
+                    <span className="flex items-center gap-1 text-[9px] bg-success/15 text-success px-1.5 py-0.5 rounded-full" title="Using schema from Connect or Scan">
+                      <Database size={8} /> Linked
+                    </span>
+                  )}
+                </span>
               </TabBtn>
             </div>
             <div className="flex-1 relative bg-code">

@@ -133,6 +133,10 @@ function ConnectPage() {
   useEffect(() => {
     try {
       localStorage.setItem("qm_conn_schema", JSON.stringify(schema));
+      // Cross-mode sharing: save discovered schema globally for Quick Analyze & Scan
+      if (schema.length > 0) {
+        localStorage.setItem("qm_global_schema", JSON.stringify(schema));
+      }
     } catch {}
   }, [schema]);
 

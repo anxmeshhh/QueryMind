@@ -408,5 +408,40 @@
     height: 100%;
     transition: width .4s ease;
   }
+
+  /* ── Stat Cards (dashboard metrics) ────────────────── */
+  .qm-stat-card {
+    transition: transform 0.15s ease, border-color 0.2s ease;
+  }
+  .qm-stat-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--primary);
+  }
+
+  /* ── File Tree Item ────────────────────────────────── */
+  .qm-file-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-family: "JetBrains Mono", monospace;
+    color: var(--text-secondary);
+    transition: background 0.15s ease;
+    cursor: default;
+  }
+  .qm-file-item:hover {
+    background: var(--elevated);
+    color: var(--text-primary);
+  }
 }
 
+/* ── Animations (outside @layer for global scope) ───── */
+@keyframes qm-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.qm-fade-in {
+  animation: qm-fade-in 0.35s ease-out both;
+}

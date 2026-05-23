@@ -57,7 +57,7 @@ export function buildResultFromEvents(events: any[]): AnalysisResult | null {
   const completeEvent = events.find((e) => e.type === "complete" && e.result);
   if (!completeEvent?.result) return null;
 
-  const { issues, indexes, optimization, performance } = completeEvent.result;
+  const { issues, indexes, optimization, performance, guard } = completeEvent.result;
 
   return {
     scoreBefore: performance?.score_before ?? 50,
@@ -74,5 +74,13 @@ export function buildResultFromEvents(events: any[]): AnalysisResult | null {
       sql: idx.create_statement ?? "",
       note: idx.reason ?? "",
     })),
+    guard: guard ? {
+      safe: guard.safe ?? true,
+      safety_score: guard.safety_score ?? 100,
+      warnings: guard.warnings ?? [],
+      blocked: guard.blocked ?? [],
+      approved: guard.approved ?? [],
+      unchanged_note: guard.unchanged_note,
+    } : undefined,
   };
 }
