@@ -9,7 +9,8 @@ import {
 } from "@tanstack/react-router";
 
 import appCss from "../styles.css?url";
-import { AuthProvider } from "@/lib/auth";
+import { AuthProvider, useAuth } from "@/lib/auth";
+import OtpVerification from "@/components/OtpVerification";
 
 function NotFoundComponent() {
   return (
@@ -111,13 +112,25 @@ function RootShell({ children }: { children: React.ReactNode }) {
   );
 }
 
+function OtpGate({ children }: { children: React.ReactNode }) {
+  const { pendingVerification } = useAuth();
+  return (
+    <>
+      {pendingVerification && <OtpVerification />}
+      {children}
+    </>
+  );
+}
+
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
 
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <Outlet />
+        <OtpGate>
+          <Outlet />
+        </OtpGate>
       </AuthProvider>
     </QueryClientProvider>
   );

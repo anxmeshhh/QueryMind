@@ -177,7 +177,41 @@
 
   /* Subtle gradient overlay for hero sections */
   .qm-hero-gradient {
-    background: radial-gradient(ellipse 60% 50% at 50% 0%, color-mix(in oklab, var(--primary) 6%, transparent) 0%, transparent 70%);
+    background: radial-gradient(ellipse 80% 60% at 50% -10%, color-mix(in oklab, var(--primary) 8%, transparent) 0%, transparent 60%),
+                radial-gradient(ellipse 40% 40% at 80% 20%, color-mix(in oklab, #a855f7 4%, transparent) 0%, transparent 60%);
+  }
+
+  /* Glassmorphism panels */
+  .qm-glass {
+    background: color-mix(in oklab, var(--panel) 80%, transparent);
+    backdrop-filter: blur(16px) saturate(1.4);
+    -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  }
+
+  /* Gradient text */
+  .qm-gradient-text {
+    background: linear-gradient(135deg, var(--primary), #a855f7, #ec4899);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Tab indicator */
+  .qm-tab-indicator {
+    position: relative;
+  }
+  .qm-tab-indicator::after {
+    content: "";
+    position: absolute;
+    bottom: -1px; left: 0; right: 0;
+    height: 2px;
+    background: var(--primary);
+    border-radius: 1px 1px 0 0;
+    transform: scaleX(0);
+    transition: transform .2s cubic-bezier(.4,0,.2,1);
+  }
+  .qm-tab-indicator.active::after {
+    transform: scaleX(1);
   }
 
   /* Navigation breadcrumb pipe */
@@ -193,10 +227,17 @@
     transition: border-color .2s, box-shadow .2s, transform .2s;
   }
   .qm-card-hover:hover {
-    border-color: var(--primary);
+    border-color: color-mix(in oklab, var(--primary) 60%, transparent);
     box-shadow: 0 0 0 1px color-mix(in oklab, var(--primary) 15%, transparent),
-                0 4px 24px color-mix(in oklab, var(--primary) 5%, transparent);
+                0 8px 32px color-mix(in oklab, var(--primary) 6%, transparent);
     transform: translateY(-2px);
+  }
+
+  /* Card glass variant */
+  .qm-card-glass {
+    background: color-mix(in oklab, var(--panel) 70%, transparent);
+    backdrop-filter: blur(12px);
+    border: 1px solid color-mix(in oklab, var(--border) 60%, transparent);
   }
 
   /* Stat card with top accent border */

@@ -112,7 +112,7 @@ If no indexes are needed, return an empty array [].
 Return valid JSON only."""
 
     try:
-        response = ask_groq(prompt)
+        response = ask_groq(prompt, max_tokens=384)
         # Parse JSON from response
         import json
         import re

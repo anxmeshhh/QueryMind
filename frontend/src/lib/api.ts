@@ -2,7 +2,7 @@
  * API service — connects frontend to Flask backend via SSE.
  */
 
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
+export const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 export interface SSEEvent {
   type: "agent_start" | "agent_done" | "agent_error" | "agent_finding" | "complete" | "error" | "batch_start" | "batch_progress" | "batch_item_done" | "batch_item_error";
@@ -149,3 +149,20 @@ export async function checkHealth(): Promise<boolean> {
   }
 }
 
+/** Scan a GitHub repository — clone & return source files */
+export async function scanGithubRepo(repoUrl: string): Promise<{ files: { name: string; content: string; size: number }[]; count: number; error?: string }> {
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/scan-github`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ repo_url: repoUrl }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      return { files: [], count: 0, error: data.error || "Failed to scan repository" };
+    }
+    return { files: data.files || [], count: data.count || 0 };
+  } catch (e) {
+    return { files: [], count: 0, error: e instanceof Error ? e.message : "Network error" };
+  }
+}

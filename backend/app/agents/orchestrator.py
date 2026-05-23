@@ -91,41 +91,41 @@ def run_quick_analysis(sql: str, schema_sql: str = "", dialect: str = "postgresq
         "data": issues,
     })
 
-    # ── Agent 3: Index Advisor ───────────────────────────
-    t = time.time()
-    yield _sse_event({"type": "agent_start", "agent": "index", "message": "Analyzing index requirements..."})
+    # ── Agent 3 & 4: Index Advisor & Query Optimizer (Parallelized) ──
+    yield _sse_event({"type": "agent_start", "agent": "index", "message": "Analyzing index requirements & optimizing query in parallel..."})
+    yield _sse_event({"type": "agent_start", "agent": "optimize", "message": "Analyzing query syntax & rewrite options..."})
 
-    indexes = advise_indexes(sql, metadata, schema, dialect)
+    import concurrent.futures
+    t_parallel = time.time()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        future_index = executor.submit(advise_indexes, sql, metadata, schema, dialect)
+        future_optimize = executor.submit(optimize_query, sql, metadata, issues, dialect, project_schema=schema)
+
+        indexes = future_index.result()
+        optimization = future_optimize.result()
+    duration_parallel = round(time.time() - t_parallel, 1)
 
     for idx in indexes:
         yield _sse_event({
             "type": "agent_finding", "agent": "index",
             "message": f"{idx.get('table', '?')}.({', '.join(idx.get('columns', []))}) → {idx.get('reason', 'recommended')}",
         })
-
     yield _sse_event({
         "type": "agent_done", "agent": "index",
         "message": f"Recommended {len(indexes)} index(es)",
-        "time": round(time.time() - t, 1),
+        "time": duration_parallel,
         "data": indexes,
     })
-
-    # ── Agent 4: Query Optimizer ─────────────────────────
-    t = time.time()
-    yield _sse_event({"type": "agent_start", "agent": "optimize", "message": "Optimizing query..."})
-
-    optimization = optimize_query(sql, metadata, issues, dialect, project_schema=schema)
 
     for change in optimization.get("changes", []):
         yield _sse_event({
             "type": "agent_finding", "agent": "optimize",
             "message": change,
         })
-
     yield _sse_event({
         "type": "agent_done", "agent": "optimize",
         "message": f"Applied {len(optimization.get('changes', []))} optimization(s)",
-        "time": round(time.time() - t, 1),
+        "time": duration_parallel,
         "data": optimization,
     })
 
@@ -321,8 +321,15 @@ def run_batch_analysis(queries: list, project_schema: list = None, dialect: str 
                 continue
 
             issues = detect_antipatterns(sql, metadata)
-            indexes = advise_indexes(sql, metadata, project_schema, dialect)
-            optimization = optimize_query(sql, metadata, issues, dialect, project_schema=project_schema)
+
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                future_index = executor.submit(advise_indexes, sql, metadata, project_schema, dialect)
+                future_optimize = executor.submit(optimize_query, sql, metadata, issues, dialect, project_schema=project_schema)
+
+                indexes = future_index.result()
+                optimization = future_optimize.result()
+
             performance = predict_performance(
                 sql, optimization.get("optimized", sql), metadata, issues, dialect
             )

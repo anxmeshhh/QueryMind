@@ -204,7 +204,9 @@ export function BatchDashboard({
                   <div className="px-4 py-2 border-b border-elevated">
                     <div className="text-[10px] font-mono text-text-disabled uppercase mb-1">Issues ({selectedOpt.issues.length})</div>
                     {selectedOpt.issues.map((issue: any, j: number) => (
-                      <div key={j} className="text-[11px] font-mono text-warning mb-1">• {issue.name || issue.message || issue}</div>
+                      <div key={j} className="text-[11px] font-mono text-warning mb-1">
+                        • {issue.title || issue.name || issue.message || (typeof issue === "object" ? (issue.description || JSON.stringify(issue)) : issue)}
+                      </div>
                     ))}
                   </div>
                 )}

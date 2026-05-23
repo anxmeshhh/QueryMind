@@ -81,7 +81,7 @@ function LoginPage() {
           </div>
 
           <h2 className="text-text-primary text-2xl font-bold leading-snug tracking-tight">
-            AI-Powered Database<br />Intelligence Platform
+            Database Engineering<br />Platform
           </h2>
           <p className="mt-3 text-text-muted text-sm leading-relaxed max-w-[320px]">
             Scan your codebase, detect anti-patterns, optimize queries, and protect your schema — all in one pipeline.
@@ -90,7 +90,7 @@ function LoginPage() {
           <div className="mt-10 space-y-4">
             {[
               { icon: Shield, label: "20 anti-pattern rules", desc: "Deterministic detection" },
-              { icon: Cpu, label: "9 specialized agents", desc: "End-to-end pipeline" },
+              { icon: Cpu, label: "9 analysis agents", desc: "End-to-end pipeline" },
               { icon: Activity, label: "Schema safety guard", desc: "Never break your DB" },
               { icon: Zap, label: "Real-time streaming", desc: "Watch agents work live" },
             ].map((f, i) => (
@@ -108,7 +108,7 @@ function LoginPage() {
         </div>
 
         <div className="text-text-disabled text-[10px] font-mono">
-          © 2024 QueryMind · Built with Flask, React & Groq AI
+          © 2024 QueryMind · Database Engineering Platform
         </div>
       </div>
 

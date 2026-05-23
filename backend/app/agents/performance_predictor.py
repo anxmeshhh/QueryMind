@@ -43,7 +43,7 @@ Scoring guide:
 Return valid JSON only."""
 
     try:
-        response = ask_groq(prompt).strip()
+        response = ask_groq(prompt, max_tokens=256).strip()
         if response.startswith("```"):
             response = response.split("```")[1]
             if response.startswith("json"):

@@ -1,31 +1,32 @@
 import { useState, useEffect } from "react";
 import { Link, useMatches } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth";
-import { LogOut, Zap, FolderSearch, Database, ChevronRight, Clock } from "lucide-react";
+import { LogOut, Zap, FolderSearch, Database, Clock, Trophy, Flame, ChevronDown } from "lucide-react";
 import { HistoryDrawer } from "./HistoryDrawer";
 import { type DBAnalysis } from "@/lib/history";
 
 const navItems = [
-  { to: "/quick" as const, label: "Quick", icon: Zap },
-  { to: "/scan" as const, label: "Scan", icon: FolderSearch },
-  { to: "/connect" as const, label: "Connect", icon: Database },
+  { to: "/quick" as const, label: "Quick Analyze", icon: Zap },
+  { to: "/scan" as const, label: "Project Scanner", icon: FolderSearch },
+  { to: "/connect" as const, label: "Live Database", icon: Database },
 ];
 
 const BADGES = [
-  { id: "first_scan", icon: "🔍", name: "First Scan", desc: "Scan your first project folder", xp: 50 },
-  { id: "bug_hunter", icon: "🐛", name: "Bug Hunter", desc: "Identify critical SQL anti-patterns", xp: 150 },
-  { id: "optimizer", icon: "⚡", name: "Query Optimizer", desc: "Successfully optimize SQL statement", xp: 250 },
-  { id: "guardian", icon: "🛡️", name: "Schema Guardian", desc: "Assess table constraints & keys", xp: 400 },
-  { id: "completionist", icon: "🏆", name: "Command Master", desc: "Maintain a healthy developer index score", xp: 600 },
+  { id: "first_scan", icon: "🔍", name: "First Scan", desc: "Run your first analysis", xp: 50 },
+  { id: "connector", icon: "🔗", name: "Connector", desc: "Connect to a live database", xp: 100 },
+  { id: "bug_hunter", icon: "🐛", name: "Bug Hunter", desc: "Find 10 SQL anti-patterns", xp: 150 },
+  { id: "speed_demon", icon: "⚡", name: "Speed Demon", desc: "Get analysis under 2 seconds", xp: 200 },
+  { id: "optimizer", icon: "🎯", name: "Optimizer", desc: "Achieve a 90+ optimization score", xp: 250 },
+  { id: "data_scientist", icon: "📊", name: "Data Scientist", desc: "Analyze 50+ queries total", xp: 300 },
+  { id: "streak_7", icon: "🔥", name: "On Fire", desc: "7-day usage streak", xp: 350 },
+  { id: "guardian", icon: "🛡️", name: "Schema Guardian", desc: "Pass schema safety on 10 queries", xp: 400 },
+  { id: "perfectionist", icon: "💎", name: "Perfectionist", desc: "Score 95+ on 5 queries", xp: 500 },
+  { id: "master", icon: "🏆", name: "Command Master", desc: "Reach Level 10", xp: 1000 },
 ];
 
 const isBadgeEarned = (badgeId: string, currentXp: number) => {
-  if (badgeId === "first_scan") return currentXp >= 50;
-  if (badgeId === "bug_hunter") return currentXp >= 150;
-  if (badgeId === "optimizer") return currentXp >= 250;
-  if (badgeId === "guardian") return currentXp >= 400;
-  if (badgeId === "completionist") return currentXp >= 600;
-  return false;
+  const badge = BADGES.find((b) => b.id === badgeId);
+  return badge ? currentXp >= badge.xp : false;
 };
 
 export function TopBar({
@@ -42,6 +43,7 @@ export function TopBar({
   const currentPath = matches[matches.length - 1]?.pathname;
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isBadgesOpen, setIsBadgesOpen] = useState(false);
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [xp, setXp] = useState(() => {
     if (typeof window === "undefined") return 0;
     try {
@@ -67,10 +69,26 @@ export function TopBar({
     };
   }, []);
 
+  // Close dropdowns on outside click
+  useEffect(() => {
+    const close = () => {
+      setIsBadgesOpen(false);
+      setIsUserMenuOpen(false);
+    };
+    if (isBadgesOpen || isUserMenuOpen) {
+      const timer = setTimeout(() => document.addEventListener("click", close), 10);
+      return () => {
+        clearTimeout(timer);
+        document.removeEventListener("click", close);
+      };
+    }
+  }, [isBadgesOpen, isUserMenuOpen]);
+
   const level = 1 + Math.floor(xp / 100);
   const nextLevelXp = level * 100;
   const prevLevelXp = (level - 1) * 100;
   const percent = Math.min(100, Math.max(0, ((xp - prevLevelXp) / 100) * 100));
+  const earnedCount = BADGES.filter((b) => isBadgeEarned(b.id, xp)).length;
 
   const handleRestore = (analysis: DBAnalysis) => {
     const event = new CustomEvent("qm-restore-history", { detail: analysis });
@@ -79,29 +97,20 @@ export function TopBar({
 
   return (
     <>
-      <header className="h-12 border-b border-border flex items-center px-4 shrink-0 bg-background/80 backdrop-blur-sm sticky top-0 z-50">
-        {/* Left: logo + breadcrumb nav */}
+      <header className="h-14 border-b border-border flex items-center px-5 shrink-0 qm-glass sticky top-0 z-50">
+        {/* Left: logo + nav */}
         <div className="flex items-center gap-1 min-w-0">
-          <Link to="/" className="flex items-center gap-2 group shrink-0">
-            <div className="w-6 h-6 bg-primary/15 border border-primary/30 rounded flex items-center justify-center group-hover:bg-primary/25 transition-colors">
-              <span className="text-primary font-mono font-bold text-[11px]">Q</span>
+          <Link to="/" className="flex items-center gap-2.5 group shrink-0 mr-1">
+            <div className="w-7 h-7 bg-primary/15 border border-primary/30 rounded-lg flex items-center justify-center group-hover:bg-primary/25 transition-colors">
+              <span className="text-primary font-mono font-bold text-xs">Q</span>
             </div>
-            <span className="text-text-primary text-sm font-semibold tracking-tight hidden sm:block">
+            <span className="text-text-primary text-[15px] font-semibold tracking-tight hidden sm:block">
               QueryMind
             </span>
           </Link>
 
-          {showBack && (
-            <>
-              <ChevronRight size={14} className="text-text-disabled mx-1" />
-              <span className="text-text-secondary text-sm font-mono capitalize">
-                {currentPath?.replace("/", "") || "home"}
-              </span>
-            </>
-          )}
-
           {!showBack && (
-            <nav className="hidden md:flex items-center ml-4 gap-0.5">
+            <nav className="hidden md:flex items-center ml-3 gap-0.5 h-14">
               {navItems.map((item) => {
                 const Icon = item.icon;
                 const active = currentPath === item.to;
@@ -109,13 +118,13 @@ export function TopBar({
                   <Link
                     key={item.to}
                     to={item.to}
-                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-[13px] font-mono transition-colors ${
+                    className={`qm-tab-indicator ${active ? "active" : ""} flex items-center gap-1.5 px-3 h-full text-[13px] font-medium transition-colors ${
                       active
-                        ? "text-primary bg-primary/10"
-                        : "text-text-muted hover:text-text-secondary hover:bg-elevated/50"
+                        ? "text-primary"
+                        : "text-text-muted hover:text-text-secondary"
                     }`}
                   >
-                    <Icon size={13} />
+                    <Icon size={14} />
                     {item.label}
                   </Link>
                 );
@@ -127,48 +136,63 @@ export function TopBar({
         {/* Center */}
         <div className="flex-1 flex justify-center">{center}</div>
 
-        {/* Right: actions + user */}
-        <div className="flex items-center gap-3">
+        {/* Right: gamification + user */}
+        <div className="flex items-center gap-2">
           {right}
           {user && (
-            <div className="flex items-center gap-2.5 border-l border-border pl-3 ml-1">
-              {/* Sleek Gamification Level Badge */}
+            <div className="flex items-center gap-2 border-l border-border pl-3 ml-1">
+              {/* Level Badge */}
               <div className="relative">
                 <button
-                  onClick={() => setIsBadgesOpen(!isBadgesOpen)}
-                  className="flex items-center gap-1.5 bg-primary/10 border border-primary/25 rounded px-2.5 py-1 hover:bg-primary/20 transition-all select-none"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsBadgesOpen(!isBadgesOpen);
+                  }}
+                  className="flex items-center gap-2 bg-primary/8 border border-primary/20 rounded-lg px-2.5 py-1.5 hover:bg-primary/15 transition-all select-none"
                   title="View Achievements"
                 >
-                  <span className="text-[10.5px] font-mono font-bold text-primary">LVL {level}</span>
-                  <div className="w-12 h-1.5 bg-code border border-border rounded-full overflow-hidden hidden sm:block">
-                    <div className="bg-primary h-full transition-all duration-300" style={{ width: `${percent}%` }} />
+                  <Trophy size={13} className="text-primary" />
+                  <span className="text-[11px] font-mono font-bold text-primary">LVL {level}</span>
+                  <div className="w-14 h-1.5 bg-elevated border border-border rounded-full overflow-hidden hidden sm:block">
+                    <div className="bg-gradient-to-r from-primary to-purple-400 h-full transition-all duration-500" style={{ width: `${percent}%` }} />
                   </div>
-                  <span className="text-[10px] font-mono text-text-secondary hidden sm:inline">{xp} XP</span>
+                  <span className="text-[10px] font-mono text-text-disabled hidden sm:inline">{xp} XP</span>
                 </button>
 
                 {isBadgesOpen && (
-                  <div className="absolute right-0 mt-2 w-72 bg-panel border border-border rounded-lg shadow-2xl p-4 z-50 qm-fade-in space-y-3">
-                    <div className="flex items-center justify-between border-b border-border pb-2">
-                      <span className="font-mono text-xs font-bold text-text-primary">Developer Achievements</span>
-                      <span className="text-[10px] font-mono bg-primary/10 text-primary px-2 py-0.5 rounded">
-                        {BADGES.filter(b => isBadgeEarned(b.id, xp)).length} / {BADGES.length} Earned
+                  <div className="absolute right-0 mt-2 w-80 bg-panel border border-border rounded-xl shadow-2xl shadow-black/30 p-5 z-50 qm-fade-in" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-between border-b border-border pb-3 mb-3">
+                      <span className="font-semibold text-sm text-text-primary">Achievements</span>
+                      <span className="text-[10px] font-mono bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                        {earnedCount} / {BADGES.length}
                       </span>
                     </div>
 
-                    <div className="space-y-2.5 max-h-60 overflow-y-auto qm-scroll pr-1">
+                    <div className="space-y-2 max-h-72 overflow-y-auto qm-scroll pr-1">
                       {BADGES.map((b) => {
                         const earned = isBadgeEarned(b.id, xp);
                         return (
-                          <div key={b.id} className={`flex items-start gap-3 p-2 rounded transition-colors ${earned ? "bg-primary/5 border border-primary/10" : "opacity-60 border border-transparent"}`}>
-                            <span className="text-xl shrink-0">{earned ? b.icon : "🔒"}</span>
+                          <div
+                            key={b.id}
+                            className={`flex items-center gap-3 p-2.5 rounded-lg transition-all ${
+                              earned
+                                ? "bg-primary/5 border border-primary/10"
+                                : "opacity-50 border border-transparent"
+                            }`}
+                          >
+                            <span className="text-lg shrink-0">{earned ? b.icon : "🔒"}</span>
                             <div className="min-w-0 flex-1">
-                              <div className="text-xs font-mono font-bold text-text-primary flex items-center gap-1.5">
+                              <div className="text-[12px] font-semibold text-text-primary flex items-center gap-1.5">
                                 {b.name}
-                                {earned && <span className="text-[9px] bg-success/15 text-success px-1.5 py-0.2 rounded-full font-normal">Earned</span>}
+                                {earned && (
+                                  <span className="text-[9px] bg-success/15 text-success px-1.5 py-px rounded-full font-normal">
+                                    Earned
+                                  </span>
+                                )}
                               </div>
-                              <div className="text-[10px] text-text-muted leading-tight mt-0.5">{b.desc}</div>
-                              <div className="text-[9px] font-mono text-text-disabled mt-1">Unlock at: {b.xp} XP</div>
+                              <div className="text-[10px] text-text-muted mt-0.5">{b.desc}</div>
                             </div>
+                            <span className="text-[9px] font-mono text-text-disabled shrink-0">{b.xp} XP</span>
                           </div>
                         );
                       })}
@@ -177,29 +201,50 @@ export function TopBar({
                 )}
               </div>
 
+              {/* History */}
               <button
                 onClick={() => setIsHistoryOpen(true)}
-                className="text-text-disabled hover:text-primary p-1.5 rounded transition-colors flex items-center gap-1"
+                className="text-text-disabled hover:text-primary p-1.5 rounded-lg hover:bg-elevated transition-all flex items-center gap-1"
                 title="View History"
               >
                 <Clock size={15} />
-                <span className="text-xs font-mono hidden md:block">History</span>
               </button>
-              <div className="w-6 h-6 rounded-full bg-primary/15 border border-primary/25 flex items-center justify-center shrink-0">
-                <span className="text-primary font-mono text-[10px] font-bold uppercase">
-                  {user.email?.charAt(0) || "U"}
-                </span>
+
+              {/* User Avatar Dropdown */}
+              <div className="relative">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsUserMenuOpen(!isUserMenuOpen);
+                  }}
+                  className="flex items-center gap-1.5 hover:bg-elevated rounded-lg px-1.5 py-1 transition-all"
+                >
+                  <div className="w-7 h-7 rounded-full bg-gradient-to-br from-primary/30 to-purple-500/30 border border-primary/25 flex items-center justify-center">
+                    <span className="text-primary font-mono text-[10px] font-bold uppercase">
+                      {user.email?.charAt(0) || "U"}
+                    </span>
+                  </div>
+                  <ChevronDown size={12} className="text-text-disabled hidden sm:block" />
+                </button>
+
+                {isUserMenuOpen && (
+                  <div className="absolute right-0 mt-2 w-56 bg-panel border border-border rounded-xl shadow-2xl shadow-black/30 py-2 z-50 qm-fade-in" onClick={(e) => e.stopPropagation()}>
+                    <div className="px-3 py-2 border-b border-border mb-1">
+                      <div className="text-text-primary text-sm font-medium truncate">
+                        {user.email?.split("@")[0] || "Developer"}
+                      </div>
+                      <div className="text-text-disabled text-[11px] font-mono truncate">{user.email}</div>
+                    </div>
+                    <button
+                      onClick={() => signOut()}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-text-muted text-[13px] hover:text-critical hover:bg-critical/5 transition-colors"
+                    >
+                      <LogOut size={14} />
+                      Sign out
+                    </button>
+                  </div>
+                )}
               </div>
-              <span className="text-text-muted text-[12px] font-mono hidden lg:block truncate max-w-[140px]">
-                {user.email}
-              </span>
-              <button
-                onClick={() => signOut()}
-                className="text-text-disabled hover:text-critical text-sm flex items-center transition-colors"
-                title="Sign Out"
-              >
-                <LogOut size={14} />
-              </button>
             </div>
           )}
         </div>
@@ -213,4 +258,3 @@ export function TopBar({
     </>
   );
 }
-

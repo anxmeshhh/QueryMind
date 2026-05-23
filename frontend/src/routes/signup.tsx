@@ -123,7 +123,7 @@ function SignupPage() {
             Start optimizing your<br />database today
           </h2>
           <p className="mt-3 text-text-muted text-sm leading-relaxed max-w-[320px]">
-            Join developers who use QueryMind to write faster, safer SQL — powered by a 9-agent AI pipeline.
+            Join developers who use QueryMind to write faster, safer SQL — powered by a 9-agent analysis engine.
           </p>
 
           <div className="mt-10 space-y-4">
@@ -147,7 +147,7 @@ function SignupPage() {
         </div>
 
         <div className="text-text-disabled text-[10px] font-mono">
-          © 2024 QueryMind · Built with Flask, React & Groq AI
+          © 2024 QueryMind · Database Engineering Platform
         </div>
       </div>
 

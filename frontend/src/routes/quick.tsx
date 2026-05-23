@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState, useRef, useEffect } from "react";
 import { Trash2, HelpCircle, Database } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
+import { SectionHeader } from "@/components/SectionHeader";
 import { AuthGuard } from "@/components/AuthGuard";
 import { ActivityLog, type LogEntry } from "@/components/ActivityLog";
 import { ResultsPanel, type AnalysisResult } from "@/components/ResultsPanel";
@@ -271,19 +272,20 @@ function QuickPage() {
   });
 
   const dialectSelect = (
-    <div className="relative">
-      <select
-        value={dialect}
-        onChange={(e) => setDialect(e.target.value)}
-        className="bg-card border border-border text-text-primary text-sm font-mono px-3 py-1.5 rounded-md appearance-none pr-8 focus:outline-none focus:border-primary"
-      >
-        <option>PostgreSQL</option>
-        <option>MySQL</option>
-        <option>SQLite</option>
-      </select>
-      <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-text-muted text-xs">
-        ▾
-      </span>
+    <div className="flex items-center bg-elevated border border-border rounded-lg p-0.5">
+      {["PostgreSQL", "MySQL", "SQLite"].map((d) => (
+        <button
+          key={d}
+          onClick={() => setDialect(d)}
+          className={`px-3 py-1 text-[12px] font-mono rounded-md transition-all ${
+            dialect === d
+              ? "bg-primary/15 text-primary font-semibold border border-primary/25"
+              : "text-text-muted hover:text-text-secondary border border-transparent"
+          }`}
+        >
+          {d}
+        </button>
+      ))}
     </div>
   );
 
