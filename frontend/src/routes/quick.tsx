@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useRef } from "react";
 import { TopBar } from "@/components/TopBar";
+import { AuthGuard } from "@/components/AuthGuard";
 import { ActivityLog, type LogEntry } from "@/components/ActivityLog";
 import { ResultsPanel, type AnalysisResult } from "@/components/ResultsPanel";
 import { sampleQueries, buildResultFromEvents } from "@/lib/mock-data";
@@ -127,6 +128,7 @@ function QuickPage() {
   );
 
   return (
+    <AuthGuard>
     <div className="h-screen flex flex-col bg-background">
       <TopBar showBack center={dialectSelect} right={runButton} />
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-[35fr_30fr_35fr] min-h-0">
@@ -178,6 +180,7 @@ function QuickPage() {
         </section>
       </div>
     </div>
+    </AuthGuard>
   );
 }
 

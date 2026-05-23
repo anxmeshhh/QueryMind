@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, useRef } from "react";
 import { Upload, X } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
+import { AuthGuard } from "@/components/AuthGuard";
 import { ActivityLog, type LogEntry } from "@/components/ActivityLog";
 import { scanFiles, type SSEEvent } from "@/lib/api";
 import type { DiscoveredQuery } from "@/lib/mock-data";
@@ -105,6 +106,7 @@ function ScanPage() {
   );
 
   return (
+    <AuthGuard>
     <div className="min-h-screen flex flex-col bg-background">
       <TopBar showBack right={right} />
       <main className="flex-1 px-6 py-6 max-w-[1280px] mx-auto w-full">
@@ -233,5 +235,6 @@ function ScanPage() {
         )}
       </main>
     </div>
+    </AuthGuard>
   );
 }

@@ -72,7 +72,7 @@ export function buildResultFromEvents(events: any[]): AnalysisResult | null {
     scoreAfter: performance?.score_after ?? 75,
     improvement: performance?.estimated_improvement ?? "improved",
     issues: (issues ?? []).map((i: any) => ({
-      severity: i.severity?.toUpperCase() ?? "MEDIUM",
+      severity: (i.severity?.toUpperCase() ?? "MEDIUM") as "CRITICAL" | "MEDIUM" | "LOW",
       title: i.name ?? "Issue",
       description: `${i.message ?? ""}\n${i.suggestion ?? ""}`.trim(),
     })),

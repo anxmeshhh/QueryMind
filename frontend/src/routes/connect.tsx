@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState, useRef } from "react";
 import { Lock } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
+import { AuthGuard } from "@/components/AuthGuard";
 import { ActivityLog, type LogEntry } from "@/components/ActivityLog";
 import { ResultsPanel } from "@/components/ResultsPanel";
 import { connectDatabase, explainQuery, type SSEEvent } from "@/lib/api";
@@ -136,6 +137,7 @@ function ConnectPage() {
   };
 
   return (
+    <AuthGuard>
     <div className="min-h-screen flex flex-col bg-background">
       <TopBar showBack />
       <main className="flex-1 px-6 py-8 max-w-[1280px] mx-auto w-full space-y-6">
@@ -327,5 +329,6 @@ function ConnectPage() {
         )}
       </main>
     </div>
+    </AuthGuard>
   );
 }

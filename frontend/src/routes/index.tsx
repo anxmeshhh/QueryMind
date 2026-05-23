@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Zap, FolderSearch, Database } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
+import { AuthGuard } from "@/components/AuthGuard";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -40,6 +41,7 @@ const cards = [
 
 function Index() {
   return (
+    <AuthGuard>
     <div className="min-h-screen flex flex-col bg-background">
       <TopBar />
       <main className="flex-1 flex items-center justify-center px-6 py-16">
@@ -87,5 +89,6 @@ function Index() {
         </div>
       </main>
     </div>
+    </AuthGuard>
   );
 }
