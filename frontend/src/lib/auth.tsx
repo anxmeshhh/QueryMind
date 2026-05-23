@@ -19,6 +19,9 @@ interface AuthContextType {
   pendingVerification: { email: string; provider: string } | null;
   sendOtp: (email: string) => Promise<{ error: string | null; sandboxCode?: string }>;
   verifyOtp: (email: string, code: string) => Promise<{ error: string | null }>;
+  githubConnected: boolean;
+  githubToken: string | null;
+  setGithubConnected: (v: boolean) => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -31,6 +34,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     email: string;
     provider: string;
   } | null>(null);
+  const [githubConnected, setGithubConnected] = useState(() => {
+    try { return localStorage.getItem("qm_github_connected") === "true"; } catch { return false; }
+  });
+  const [githubToken, setGithubToken] = useState<string | null>(null);
 
   useEffect(() => {
     // Get initial session
@@ -47,6 +54,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
+
+      // Capture GitHub provider token if available
+      if (session?.provider_token && session.user?.app_metadata?.provider === "github") {
+        setGithubToken(session.provider_token);
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -77,6 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       provider: "github",
       options: {
         redirectTo: window.location.origin,
+        scopes: "read:user repo",
       },
     });
     return { error: error?.message ?? null };
@@ -219,6 +232,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         pendingVerification,
         sendOtp,
         verifyOtp,
+        githubConnected,
+        githubToken,
+        setGithubConnected: (v: boolean) => {
+          setGithubConnected(v);
+          try { localStorage.setItem("qm_github_connected", v ? "true" : "false"); } catch {}
+        },
       }}
     >
       {children}

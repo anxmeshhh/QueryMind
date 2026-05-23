@@ -13,6 +13,7 @@ import { AuthProvider, useAuth } from "@/lib/auth";
 import OtpVerification from "@/components/OtpVerification";
 import { XpToastContainer } from "@/components/XpToast";
 import { KeyboardShortcutsOverlay } from "@/components/KeyboardShortcuts";
+import { GitHubLinkPrompt } from "@/components/GitHubLinkPrompt";
 
 function NotFoundComponent() {
   return (
@@ -135,6 +136,7 @@ function RootComponent() {
         </OtpGate>
         <XpToastContainer />
         <KeyboardShortcutsOverlay />
+        <GitHubLinkPrompt />
       </AuthProvider>
     </QueryClientProvider>
   );

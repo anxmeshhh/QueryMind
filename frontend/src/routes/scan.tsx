@@ -12,6 +12,7 @@ import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { SchemaERD } from "@/components/scan/SchemaERD";
 import { toast } from "sonner";
 import { awardXp } from "@/components/XpToast";
+import { useAuth } from "@/lib/auth";
 
 export const Route = createFileRoute("/scan")({
   head: () => ({
@@ -111,6 +112,12 @@ function ScanPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
 
+  // GitHub connected repos
+  const { user, githubConnected, githubToken, setGithubConnected } = useAuth();
+  const [ghRepos, setGhRepos] = useState<{ name: string; full_name: string; description: string; language: string; stargazers_count: number; updated_at: string }[]>([]);
+  const [ghLoading, setGhLoading] = useState(false);
+  const [ghSearchFilter, setGhSearchFilter] = useState("");
+
   // Load from localStorage for Workspace Persistence
   useEffect(() => {
     try {
@@ -141,6 +148,52 @@ function ScanPage() {
     // Load recent scans for empty state
     fetchRecentScans(5).then(setRecentScans);
   }, []);
+
+  // Fetch GitHub repos when connected and tab is active
+  useEffect(() => {
+    if (!githubConnected || activeTab !== "github" || ghRepos.length > 0) return;
+
+    const fetchRepos = async () => {
+      setGhLoading(true);
+      try {
+        // Use GitHub username from user metadata
+        const ghUsername = user?.user_metadata?.user_name || user?.user_metadata?.preferred_username;
+        if (!ghUsername) {
+          setGhLoading(false);
+          return;
+        }
+
+        // Fetch user repos (public). If we have a token, we can get private repos too.
+        const headers: Record<string, string> = { Accept: "application/vnd.github.v3+json" };
+        if (githubToken) {
+          headers["Authorization"] = `Bearer ${githubToken}`;
+        }
+
+        const res = await fetch(
+          githubToken
+            ? "https://api.github.com/user/repos?per_page=50&sort=updated&type=all"
+            : `https://api.github.com/users/${ghUsername}/repos?per_page=50&sort=updated`,
+          { headers }
+        );
+        if (res.ok) {
+          const data = await res.json();
+          setGhRepos(data.map((r: any) => ({
+            name: r.name,
+            full_name: r.full_name,
+            description: r.description || "",
+            language: r.language || "",
+            stargazers_count: r.stargazers_count || 0,
+            updated_at: r.updated_at || "",
+          })));
+        }
+      } catch (e) {
+        console.error("Failed to fetch GitHub repos:", e);
+      }
+      setGhLoading(false);
+    };
+
+    fetchRepos();
+  }, [githubConnected, activeTab, user, githubToken]);
 
   // Save changes to localStorage to persist workspace state
   useEffect(() => {
@@ -663,32 +716,138 @@ function ScanPage() {
               </div>
             </div>
           ) : (
-            <div className="bg-panel border border-border rounded-lg p-6">
-              <div className="max-w-[640px] space-y-4">
-                <div className="flex items-center gap-2">
-                  <Github className="text-text-primary" size={20} />
-                  <h3 className="text-text-primary font-mono font-bold text-sm">Import Public Repository</h3>
+            <div className="space-y-4">
+              {/* Connected Repos Browser */}
+              {githubConnected ? (
+                <div className="bg-panel border border-border rounded-lg overflow-hidden">
+                  <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Github size={16} className="text-text-primary" />
+                      <span className="text-text-primary font-mono font-bold text-sm">Your Repositories</span>
+                      <span className="text-[10px] font-mono bg-success/15 text-success px-1.5 py-0.5 rounded-full">Connected</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={ghSearchFilter}
+                        onChange={(e) => setGhSearchFilter(e.target.value)}
+                        placeholder="Search repos..."
+                        className="bg-code border border-border rounded-md px-2.5 py-1 font-mono text-[11px] text-text-primary focus:outline-none focus:border-primary/40 placeholder:text-text-disabled w-[160px]"
+                      />
+                      <button
+                        onClick={() => {
+                          setGhRepos([]);
+                          setGhLoading(true);
+                          // Force re-fetch
+                          setTimeout(() => {
+                            setGhRepos([]);
+                          }, 0);
+                        }}
+                        className="text-text-muted hover:text-text-secondary transition-colors"
+                        title="Refresh repos"
+                      >
+                        <RefreshCw size={13} />
+                      </button>
+                      <button
+                        onClick={() => setGithubConnected(false)}
+                        className="text-text-disabled hover:text-critical text-[10px] font-mono transition-colors"
+                      >
+                        Disconnect
+                      </button>
+                    </div>
+                  </div>
+
+                  {ghLoading ? (
+                    <div className="flex items-center justify-center py-12 gap-2">
+                      <span className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                      <span className="text-text-muted text-sm font-mono">Loading repositories...</span>
+                    </div>
+                  ) : (
+                    <div className="max-h-[320px] overflow-auto qm-scroll divide-y divide-elevated">
+                      {ghRepos
+                        .filter((r) =>
+                          !ghSearchFilter || r.name.toLowerCase().includes(ghSearchFilter.toLowerCase()) || r.description?.toLowerCase().includes(ghSearchFilter.toLowerCase())
+                        )
+                        .map((repo, i) => (
+                          <div
+                            key={i}
+                            className="px-4 py-3 flex items-center justify-between hover:bg-elevated/30 transition-colors group"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="text-text-primary text-[13px] font-mono font-semibold truncate">{repo.name}</span>
+                                {repo.language && (
+                                  <span className="text-[9px] font-mono bg-secondary text-text-secondary px-1.5 py-0.5 rounded shrink-0">{repo.language}</span>
+                                )}
+                                {repo.stargazers_count > 0 && (
+                                  <span className="text-[9px] font-mono text-text-disabled flex items-center gap-0.5 shrink-0">
+                                    <Star size={8} /> {repo.stargazers_count}
+                                  </span>
+                                )}
+                              </div>
+                              {repo.description && (
+                                <div className="text-text-muted text-[11px] truncate mt-0.5 max-w-[500px]">{repo.description}</div>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => {
+                                setGithubUrl(`https://github.com/${repo.full_name}`);
+                                importFromGithub({ preventDefault: () => {} } as React.FormEvent);
+                              }}
+                              className="shrink-0 bg-primary/10 text-primary text-[11px] font-semibold px-3 py-1.5 rounded-md hover:bg-primary/20 transition-all opacity-0 group-hover:opacity-100 flex items-center gap-1"
+                            >
+                              <ArrowRight size={11} />
+                              Import
+                            </button>
+                          </div>
+                        ))}
+                      {ghRepos.length === 0 && !ghLoading && (
+                        <div className="flex items-center justify-center py-8 text-text-disabled text-sm font-mono">
+                          No repositories found
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-                <p className="text-xs text-text-secondary leading-relaxed">
-                  Provide a public GitHub repository URL. We'll recursively search its main tree and fetch files to map their queries directly to our AI scanning queue.
-                </p>
-                <form onSubmit={importFromGithub} className="flex gap-2">
-                  <input
-                    type="text"
-                    value={githubUrl}
-                    onChange={(e) => setGithubUrl(e.target.value)}
-                    placeholder="https://github.com/owner/repo"
-                    className="flex-1 bg-code border border-border rounded-md px-3 py-2 font-mono text-[13px] text-text-primary focus:outline-none focus:border-primary placeholder:text-text-disabled"
-                  />
-                  <button
-                    type="submit"
-                    disabled={scanning || !githubUrl.trim()}
-                    className="bg-primary text-primary-foreground text-sm font-medium px-4 py-2 rounded-md hover:bg-primary/90 transition-colors disabled:opacity-60"
-                  >
-                    Load Files
-                  </button>
-                </form>
-              </div>
+              ) : (
+                /* Manual URL Import (fallback for non-connected users) */
+                <div className="bg-panel border border-border rounded-lg p-6">
+                  <div className="max-w-[640px] space-y-4">
+                    <div className="flex items-center gap-2">
+                      <Github className="text-text-primary" size={20} />
+                      <h3 className="text-text-primary font-mono font-bold text-sm">Import Public Repository</h3>
+                    </div>
+                    <p className="text-xs text-text-secondary leading-relaxed">
+                      Provide a public GitHub repository URL. We'll recursively search its main tree and fetch files to map their queries directly to our scanning queue.
+                    </p>
+                    <form onSubmit={importFromGithub} className="flex gap-2">
+                      <input
+                        type="text"
+                        value={githubUrl}
+                        onChange={(e) => setGithubUrl(e.target.value)}
+                        placeholder="https://github.com/owner/repo"
+                        className="flex-1 bg-code border border-border rounded-md px-3 py-2 font-mono text-[13px] text-text-primary focus:outline-none focus:border-primary placeholder:text-text-disabled"
+                      />
+                      <button
+                        type="submit"
+                        disabled={scanning || !githubUrl.trim()}
+                        className="bg-primary text-primary-foreground text-sm font-medium px-4 py-2 rounded-md hover:bg-primary/90 transition-colors disabled:opacity-60"
+                      >
+                        Load Files
+                      </button>
+                    </form>
+                    {user?.app_metadata?.provider === "github" && (
+                      <button
+                        onClick={() => setGithubConnected(true)}
+                        className="text-primary text-[12px] font-medium hover:underline flex items-center gap-1"
+                      >
+                        <Github size={12} />
+                        Or connect your GitHub to browse repos directly
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
