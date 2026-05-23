@@ -259,6 +259,7 @@ function ConnectPage() {
     setExplained(false);
     setPlanNodes([]);
     setResult(null);
+    setLog([]);
     eventsRef.current = [];
 
     explainQuery(
@@ -267,6 +268,24 @@ function ConnectPage() {
       "postgresql",
       (event: SSEEvent) => {
         eventsRef.current.push(event);
+
+        const agentLevel = (e: SSEEvent): LogEntry["level"] => {
+          if (e.type === "agent_error" || e.type === "error") return "critical";
+          if (e.severity === "critical") return "critical";
+          if (e.severity === "medium") return "warning";
+          if (e.agent === "index" || e.agent === "optimize") return "index";
+          if (e.type === "complete") return "success";
+          return "info";
+        };
+
+        const entry: LogEntry = {
+          time: event.time ? `${event.time}s` : "",
+          agent: event.agent || "system",
+          message: event.message || "",
+          level: agentLevel(event),
+        };
+
+        setLog((prev) => [...prev, entry]);
 
         // Parse explain plan
         if (event.type === "agent_done" && event.agent === "explain" && event.data?.plan) {
@@ -318,6 +337,7 @@ function ConnectPage() {
     setAnalyzingAll(true);
     setAggregate(null);
     setSelectedOpt(null);
+    setLog([]);
     setBatchProgress({ done: 0, total: schema.length });
 
     // Build schema DDL from discovered schema
@@ -366,6 +386,25 @@ function ConnectPage() {
 
           analyzeQuery(sq.sql, "postgresql", schemaDDL, (event) => {
             events.push(event);
+
+            const agentLevel = (e: SSEEvent): LogEntry["level"] => {
+              if (e.type === "agent_error" || e.type === "error") return "critical";
+              if (e.severity === "critical") return "critical";
+              if (e.severity === "medium") return "warning";
+              if (e.agent === "index" || e.agent === "optimize") return "index";
+              if (e.type === "complete") return "success";
+              return "info";
+            };
+
+            const entry: LogEntry = {
+              time: event.time ? `${event.time}s` : "",
+              agent: event.agent || "system",
+              message: `[Table: ${sq.table}] ${event.message || ""}`,
+              level: agentLevel(event),
+            };
+
+            setLog((prev) => [...prev, entry]);
+
             if (event.type === "complete") {
               const built = buildResultFromEvents(events);
               if (built) {
@@ -652,7 +691,7 @@ function ConnectPage() {
                 {/* Activity Log */}
                 {log.length > 0 && (
                   <div className="bg-panel border border-border rounded-lg overflow-hidden max-h-[300px]">
-                    <ActivityLog entries={log} active={connecting} />
+                    <ActivityLog entries={log} active={explaining} />
                   </div>
                 )}
 
@@ -741,6 +780,37 @@ function ConnectPage() {
                   onRecompute={handleAnalyzeAll}
                   analyzingAll={analyzingAll}
                 />
+              ) : analyzingAll ? (
+                <div className="space-y-6">
+                  {/* Batch Progress Bar */}
+                  <div className="bg-panel border border-border rounded-lg p-6 space-y-4">
+                    <div className="flex justify-between items-center text-sm font-mono">
+                      <span className="text-text-primary flex items-center gap-2">
+                        <span className="w-3.5 h-3.5 border-2 border-primary/30 border-t-primary rounded-full animate-spin shrink-0" />
+                        Optimizing all database queries recursively...
+                      </span>
+                      <span className="text-text-muted">{batchProgress.done} / {batchProgress.total} Completed</span>
+                    </div>
+                    <div className="w-full bg-secondary h-2.5 rounded-full overflow-hidden border border-border">
+                      <div
+                        className="bg-primary h-full transition-all duration-300"
+                        style={{ width: `${(batchProgress.done / batchProgress.total) * 100}%` }}
+                      />
+                    </div>
+                    <p className="text-xs font-mono text-text-disabled">
+                      Running 8 specialized AI agents sequentially per SQL instruction. Calculating latency index differentials, index plans, and rewrite validations.
+                    </p>
+                  </div>
+                  {/* Active logs console */}
+                  <div className="bg-panel border border-border rounded-lg overflow-hidden flex flex-col min-h-[350px]">
+                    <div className="h-10 px-4 flex items-center border-b border-border bg-panel shrink-0">
+                      <span className="section-label">Agentic Pipelines Logs (Connect Scan)</span>
+                    </div>
+                    <div className="flex-1 bg-code">
+                      <ActivityLog entries={log} active={analyzingAll} />
+                    </div>
+                  </div>
+                </div>
               ) : (
                 <div className="bg-panel border border-border rounded-lg p-12 text-center">
                   <Layers size={32} className="text-text-disabled mx-auto mb-4" />
