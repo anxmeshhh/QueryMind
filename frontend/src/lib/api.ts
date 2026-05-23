@@ -2,7 +2,11 @@
  * API service — connects frontend to Flask backend via SSE.
  */
 
-export const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
+export const API_BASE =
+  import.meta.env.VITE_API_URL ||
+  (typeof window !== "undefined" && window.location.hostname.includes("workers.dev")
+    ? "https://querymind-api-xrer.onrender.com"
+    : "http://localhost:5000");
 
 export interface SSEEvent {
   type: "agent_start" | "agent_done" | "agent_error" | "agent_finding" | "complete" | "error" | "batch_start" | "batch_progress" | "batch_item_done" | "batch_item_error";
