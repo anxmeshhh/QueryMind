@@ -18,8 +18,11 @@ def parse_query(sql: str, dialect: str = "postgres") -> dict:
     }
     dialect_key = dialect_map.get(dialect.lower(), "postgres")
 
+    from app.utils.sanitizer import sanitize_query_placeholders
+    sanitized_sql = sanitize_query_placeholders(sql)
+
     try:
-        parsed = sqlglot.parse_one(sql, dialect=dialect_key)
+        parsed = sqlglot.parse_one(sanitized_sql, dialect=dialect_key)
     except Exception as e:
         return {
             "error": f"Syntax error: {str(e)}",

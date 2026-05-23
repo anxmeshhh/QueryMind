@@ -205,8 +205,10 @@ def check_missing_aliases(sql, parsed, metadata):
 
 def detect_antipatterns(sql: str, metadata: dict) -> list:
     """Run all 20 anti-pattern rules and return detected issues."""
+    from app.utils.sanitizer import sanitize_query_placeholders
+    sanitized_sql = sanitize_query_placeholders(sql)
     try:
-        parsed = sqlglot.parse_one(sql)
+        parsed = sqlglot.parse_one(sanitized_sql)
     except Exception:
         parsed = None
 

@@ -53,3 +53,26 @@ def is_safe_for_execution(sql: str) -> bool:
     """Check if SQL is safe to execute on a live database (read-only)."""
     first_word = sql.strip().split()[0].upper() if sql.strip().split() else ""
     return first_word in ALLOWED_STATEMENTS
+
+
+def sanitize_query_placeholders(sql: str) -> str:
+    """
+    Temporarily replace common parameter placeholders (%s, %d, ?, $1, :name)
+    with standard SQL literals so sqlglot can parse the AST without syntax errors.
+    """
+    import re
+    # 1. Replace %s and %d (often used in Python DBAPI)
+    processed = re.sub(r'%\s*s\b', "'QM_PARAM'", sql)
+    processed = re.sub(r'%\s*d\b', "1", processed)
+
+    # 2. Replace positional ? placeholders
+    processed = re.sub(r'\?', "'QM_PARAM'", processed)
+
+    # 3. Replace PostgreSQL positional placeholders like $1, $2, $3...
+    processed = re.sub(r'\$\d+', "'QM_PARAM'", processed)
+
+    # 4. Replace named parameters like :email, :password, :id
+    # Negative lookbehind for a colon ensures we don't match postgres cast operators (::text)
+    processed = re.sub(r'(?<!:):([a-zA-Z_][a-zA-Z0-9_]*)', "'QM_PARAM'", processed)
+
+    return processed
