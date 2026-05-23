@@ -2,6 +2,7 @@ import { CopyButton } from "./CopyButton";
 import { useState } from "react";
 import { ChevronRight, ShieldCheck, ShieldAlert, Download, FileText } from "lucide-react";
 import { OptimizationFlow } from "./scan/OptimizationFlow";
+import { QueryDiff } from "./QueryDiff";
 
 export interface Issue {
   severity: "CRITICAL" | "MEDIUM" | "LOW";
@@ -170,13 +171,13 @@ export function ResultsPanel({ result, originalSql = "SELECT * FROM users u, ord
         </div>
       </div>
 
-      {/* Optimized Query */}
+      {/* Optimized Query with Diff Viewer */}
       <div className="border-b border-border">
         <div className="px-4 py-3 flex items-center justify-between">
           <span className="section-label">Optimized Query</span>
           <CopyButton text={result.optimizedSql} />
         </div>
-        <CodeBlock code={result.optimizedSql} />
+        <QueryDiff original={originalSql} optimized={result.optimizedSql} />
       </div>
 
       {/* Indexes */}

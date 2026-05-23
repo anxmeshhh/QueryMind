@@ -166,3 +166,26 @@ export async function scanGithubRepo(repoUrl: string): Promise<{ files: { name: 
     return { files: [], count: 0, error: e instanceof Error ? e.message : "Network error" };
   }
 }
+
+/** Natural Language to SQL conversion */
+export async function nlToSql(
+  prompt: string,
+  dialect: string = "postgresql",
+  schema: any[] = [],
+): Promise<{ sql: string; explanation: string; tables_used: string[]; confidence: number; error?: string }> {
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/nl-to-sql`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt, dialect, schema }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      return { sql: "", explanation: "", tables_used: [], confidence: 0, error: data.error };
+    }
+    return data;
+  } catch (e) {
+    return { sql: "", explanation: "", tables_used: [], confidence: 0, error: e instanceof Error ? e.message : "Network error" };
+  }
+}
+

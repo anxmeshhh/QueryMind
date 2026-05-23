@@ -1,15 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useRef, useEffect } from "react";
-import { Trash2, HelpCircle, Database } from "lucide-react";
+import { Trash2, HelpCircle, Database, MessageSquare, Sparkles } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
 import { SectionHeader } from "@/components/SectionHeader";
 import { AuthGuard } from "@/components/AuthGuard";
 import { ActivityLog, type LogEntry } from "@/components/ActivityLog";
 import { ResultsPanel, type AnalysisResult } from "@/components/ResultsPanel";
 import { sampleQueries, buildResultFromEvents } from "@/lib/mock-data";
-import { analyzeQuery, type SSEEvent } from "@/lib/api";
+import { analyzeQuery, nlToSql, type SSEEvent } from "@/lib/api";
 import { saveAnalysis } from "@/lib/history";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import { awardXp } from "@/components/XpToast";
 import { toast } from "sonner";
 
 interface QuickSearch {
@@ -46,7 +47,7 @@ CREATE TABLE users (
 function QuickPage() {
   const { q } = Route.useSearch();
   
-  const [tab, setTab] = useState<"query" | "schema">("query");
+  const [tab, setTab] = useState<"query" | "schema" | "nl">("query");
   const [query, setQuery] = useState("");
   const [schema, setSchema] = useState("");
   const [dialect, setDialect] = useState("PostgreSQL");
@@ -54,6 +55,8 @@ function QuickPage() {
   const [log, setLog] = useState<LogEntry[]>([]);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [nlPrompt, setNlPrompt] = useState("");
+  const [nlLoading, setNlLoading] = useState(false);
   
   const abortRef = useRef<AbortController | null>(null);
   const eventsRef = useRef<SSEEvent[]>([]);
@@ -239,8 +242,7 @@ function QuickPage() {
             try {
               const currentXp = parseInt(localStorage.getItem("qm_xp") || "0");
               const earnedXp = 25 + (built.issues?.length || 0) * 10;
-              localStorage.setItem("qm_xp", String(currentXp + earnedXp));
-              window.dispatchEvent(new Event("qm-xp-updated"));
+              awardXp(earnedXp, `Analyzed query · ${built.issues?.length || 0} issues found`);
               toast.success(`Analysis Complete! Earned +${earnedXp} XP`);
             } catch {}
           }
@@ -332,6 +334,12 @@ function QuickPage() {
                   )}
                 </span>
               </TabBtn>
+              <TabBtn active={tab === "nl"} onClick={() => setTab("nl")}>
+                <span className="flex items-center gap-1.5">
+                  <Sparkles size={11} />
+                  Natural Language
+                </span>
+              </TabBtn>
             </div>
             <div className="flex-1 relative bg-code">
               {tab === "query" ? (
@@ -340,11 +348,36 @@ function QuickPage() {
                   onChange={setQuery}
                   placeholder={DEFAULT_QUERY}
                 />
-              ) : (
+              ) : tab === "schema" ? (
                 <CodeEditor
                   value={schema}
                   onChange={setSchema}
                   placeholder={DEFAULT_SCHEMA}
+                />
+              ) : (
+                <NlInput
+                  value={nlPrompt}
+                  onChange={setNlPrompt}
+                  loading={nlLoading}
+                  onSubmit={async () => {
+                    if (!nlPrompt.trim() || nlLoading) return;
+                    setNlLoading(true);
+                    setError(null);
+                    const res = await nlToSql(nlPrompt, dialect);
+                    setNlLoading(false);
+                    if (res.error || !res.sql) {
+                      setError(res.error || "Could not generate SQL");
+                      return;
+                    }
+                    setQuery(res.sql);
+                    setTab("query");
+                    awardXp(15, "Generated SQL from natural language");
+                    toast.success(
+                      `Generated SQL (${Math.round(res.confidence * 100)}% confidence)`,
+                    );
+                    // Auto-run analysis on the generated SQL
+                    setTimeout(() => runAnalysisWithQuery(res.sql, dialect, schema), 200);
+                  }}
                 />
               )}
             </div>
@@ -423,6 +456,81 @@ function CodeEditor({
         spellCheck={false}
         className="flex-1 bg-transparent text-text-primary placeholder:text-[#3f3f46] font-mono text-[13px] leading-6 py-3 pr-4 outline-none resize-none min-h-full"
       />
+    </div>
+  );
+}
+
+function NlInput({
+  value,
+  onChange,
+  loading,
+  onSubmit,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  loading: boolean;
+  onSubmit: () => void;
+}) {
+  const examples = [
+    "Show me all users who placed an order in the last 30 days",
+    "Find the top 10 products by revenue with category names",
+    "Count active subscriptions grouped by plan type per month",
+    "Get users who have never made a purchase",
+  ];
+
+  return (
+    <div className="absolute inset-0 flex flex-col p-5 overflow-auto qm-scroll">
+      <div className="flex items-center gap-2 mb-3">
+        <Sparkles size={14} className="text-primary" />
+        <span className="text-text-primary text-sm font-semibold">Describe your query in plain English</span>
+      </div>
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            onSubmit();
+          }
+        }}
+        placeholder="e.g. Show me all users who signed up this week and haven't verified their email..."
+        className="w-full bg-panel border border-border rounded-lg p-4 text-text-primary text-sm leading-relaxed placeholder:text-text-disabled focus:outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/10 transition-all resize-none min-h-[120px]"
+      />
+      <div className="flex items-center justify-between mt-3">
+        <span className="text-text-disabled text-[10px] font-mono">Ctrl+Enter to generate</span>
+        <button
+          onClick={onSubmit}
+          disabled={!value.trim() || loading}
+          className="bg-primary text-primary-foreground text-xs font-semibold px-4 py-2 rounded-lg hover:bg-primary/90 transition-all disabled:opacity-40 flex items-center gap-1.5"
+        >
+          {loading ? (
+            <>
+              <span className="w-3 h-3 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+              Generating...
+            </>
+          ) : (
+            <>
+              <Sparkles size={12} />
+              Generate SQL
+            </>
+          )}
+        </button>
+      </div>
+
+      <div className="mt-6">
+        <div className="text-text-disabled text-[10px] font-mono uppercase tracking-wider mb-2">Try these examples</div>
+        <div className="space-y-1.5">
+          {examples.map((ex, i) => (
+            <button
+              key={i}
+              onClick={() => onChange(ex)}
+              className="w-full text-left bg-elevated/50 border border-border rounded-md px-3 py-2 text-text-secondary text-[12px] hover:bg-elevated hover:border-primary/20 hover:text-text-primary transition-all"
+            >
+              "{ex}"
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

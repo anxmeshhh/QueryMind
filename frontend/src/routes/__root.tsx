@@ -11,6 +11,8 @@ import {
 import appCss from "../styles.css?url";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import OtpVerification from "@/components/OtpVerification";
+import { XpToastContainer } from "@/components/XpToast";
+import { KeyboardShortcutsOverlay } from "@/components/KeyboardShortcuts";
 
 function NotFoundComponent() {
   return (
@@ -131,6 +133,8 @@ function RootComponent() {
         <OtpGate>
           <Outlet />
         </OtpGate>
+        <XpToastContainer />
+        <KeyboardShortcutsOverlay />
       </AuthProvider>
     </QueryClientProvider>
   );

@@ -126,6 +126,29 @@ def create_app() -> Flask:
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
+    # ── Natural Language to SQL ──────────────────────────
+    @app.route("/api/v1/nl-to-sql", methods=["POST"])
+    def nl_to_sql():
+        """Convert natural language to SQL query."""
+        try:
+            data = request.get_json()
+            if not data or "prompt" not in data:
+                return jsonify({"error": "prompt is required"}), 400
+
+            prompt = data["prompt"].strip()
+            if not prompt or len(prompt) > 2000:
+                return jsonify({"error": "Prompt must be 1-2000 characters"}), 400
+
+            dialect = data.get("dialect", "postgresql")
+            schema = data.get("schema", [])
+
+            from app.agents.nl_to_sql import natural_language_to_sql
+            result = natural_language_to_sql(prompt, dialect, schema)
+
+            return jsonify(result)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
     # ── Health check ─────────────────────────────────────
     @app.route("/api/v1/health", methods=["GET"])
     def health():

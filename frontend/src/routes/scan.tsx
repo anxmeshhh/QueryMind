@@ -11,6 +11,7 @@ import { calculateComplexity } from "@/lib/complexity";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { SchemaERD } from "@/components/scan/SchemaERD";
 import { toast } from "sonner";
+import { awardXp } from "@/components/XpToast";
 
 export const Route = createFileRoute("/scan")({
   head: () => ({
@@ -433,13 +434,8 @@ function ScanPage() {
 
           // Gamification: award XP
           const earnedXp = results.length * XP_PER_QUERY + allIssues.length * XP_PER_ISSUE;
-          const newXp = xp + earnedXp;
-          setXp(newXp);
-          try { 
-            localStorage.setItem("qm_xp", String(newXp)); 
-            window.dispatchEvent(new Event("qm-xp-updated"));
-            toast.success(`Scan Complete! Earned +${earnedXp} XP`);
-          } catch {}
+          awardXp(earnedXp, `Scanned ${results.length} queries · ${allIssues.length} issues found`);
+          toast.success(`Scan Complete! Earned +${earnedXp} XP`);
 
           // Save to history
           saveScanResult(queries.length, payload, "postgresql", projectSchema);

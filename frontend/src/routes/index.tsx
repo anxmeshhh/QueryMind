@@ -5,6 +5,7 @@ import { TopBar } from "@/components/TopBar";
 import { AuthGuard } from "@/components/AuthGuard";
 import { useAuth } from "@/lib/auth";
 import { fetchRecentScans, type DBAnalysis } from "@/lib/history";
+import { OnboardingTour } from "@/components/OnboardingTour";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -78,6 +79,7 @@ function Index() {
     <AuthGuard>
       <div className="min-h-screen flex flex-col bg-background">
         <TopBar />
+        <OnboardingTour />
         <main className="flex-1 flex flex-col">
           {/* Hero */}
           <section className="relative px-6 pt-20 pb-16 qm-hero-gradient overflow-hidden">
