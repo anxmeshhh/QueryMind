@@ -88,7 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .from("user_profiles")
           .select("xp, level")
           .eq("id", user.id)
-          .single();
+          .maybeSingle();
 
         if (data) {
           const savedLocalXp = parseInt(localStorage.getItem("qm_xp") || "0");
@@ -96,11 +96,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const finalXp = Math.max(data.xp || 0, savedLocalXp);
           localStorage.setItem("qm_xp", String(finalXp));
           window.dispatchEvent(new Event("qm-xp-updated"));
-        } else if (error) {
-          // If profile doesn't exist, we insert it
+        } else {
+          // If profile doesn't exist, we upsert it to ensure it is created safely without duplicate keys (resolves 409 conflict)
           const localXp = parseInt(localStorage.getItem("qm_xp") || "0");
           const localLevel = 1 + Math.floor(localXp / 100);
-          await supabase.from("user_profiles").insert({
+          await supabase.from("user_profiles").upsert({
             id: user.id,
             display_name: user.email?.split("@")[0] || "Developer",
             xp: localXp,
