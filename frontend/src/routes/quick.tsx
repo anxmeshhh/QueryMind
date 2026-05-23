@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import { Trash2, HelpCircle } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
 import { AuthGuard } from "@/components/AuthGuard";
 import { ActivityLog, type LogEntry } from "@/components/ActivityLog";
@@ -7,7 +8,16 @@ import { ResultsPanel, type AnalysisResult } from "@/components/ResultsPanel";
 import { sampleQueries, buildResultFromEvents } from "@/lib/mock-data";
 import { analyzeQuery, type SSEEvent } from "@/lib/api";
 
+interface QuickSearch {
+  q?: string;
+}
+
 export const Route = createFileRoute("/quick")({
+  validateSearch: (search: Record<string, unknown>): QuickSearch => {
+    return {
+      q: typeof search.q === "string" ? search.q : undefined,
+    };
+  },
   head: () => ({
     meta: [
       { title: "Quick Analyze — QueryMind" },
@@ -30,6 +40,8 @@ CREATE TABLE users (
 );`;
 
 function QuickPage() {
+  const { q } = Route.useSearch();
+  
   const [tab, setTab] = useState<"query" | "schema">("query");
   const [query, setQuery] = useState("");
   const [schema, setSchema] = useState("");
@@ -38,13 +50,84 @@ function QuickPage() {
   const [log, setLog] = useState<LogEntry[]>([]);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  
   const abortRef = useRef<AbortController | null>(null);
   const eventsRef = useRef<SSEEvent[]>([]);
 
-  const runAnalysis = () => {
-    const sql = query.trim() || DEFAULT_QUERY;
-    if (!query.trim()) setQuery(DEFAULT_QUERY);
+  // Load state on mount (restoring from search parameter or localStorage)
+  useEffect(() => {
+    if (q) {
+      setQuery(q);
+      // Auto-trigger analysis for imported queries
+      setTimeout(() => {
+        runAnalysisWithQuery(q, dialect, schema);
+      }, 150);
+    } else {
+      try {
+        const savedQuery = localStorage.getItem("qm_quick_query");
+        const savedSchema = localStorage.getItem("qm_quick_schema");
+        const savedDialect = localStorage.getItem("qm_quick_dialect");
+        const savedLog = localStorage.getItem("qm_quick_log");
+        const savedResult = localStorage.getItem("qm_quick_result");
 
+        if (savedQuery) setQuery(savedQuery);
+        if (savedSchema) setSchema(savedSchema);
+        if (savedDialect) setDialect(savedDialect);
+        if (savedLog) setLog(JSON.parse(savedLog));
+        if (savedResult) setResult(JSON.parse(savedResult));
+      } catch (e) {
+        console.error("Failed to restore quick page workspace:", e);
+      }
+    }
+  }, [q]);
+
+  // Persist workspace changes
+  useEffect(() => {
+    try {
+      localStorage.setItem("qm_quick_query", query);
+    } catch {}
+  }, [query]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("qm_quick_schema", schema);
+    } catch {}
+  }, [schema]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("qm_quick_dialect", dialect);
+    } catch {}
+  }, [dialect]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("qm_quick_log", JSON.stringify(log));
+    } catch {}
+  }, [log]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("qm_quick_result", JSON.stringify(result));
+    } catch {}
+  }, [result]);
+
+  const clearQuickWorkspace = () => {
+    setQuery("");
+    setSchema("");
+    setLog([]);
+    setResult(null);
+    setError(null);
+    try {
+      localStorage.removeItem("qm_quick_query");
+      localStorage.removeItem("qm_quick_schema");
+      localStorage.removeItem("qm_quick_log");
+      localStorage.removeItem("qm_quick_result");
+    } catch {}
+  };
+
+  const runAnalysisWithQuery = (targetSql: string, targetDialect: string, targetSchema: string) => {
+    const sql = targetSql.trim() || DEFAULT_QUERY;
     setRunning(true);
     setLog([]);
     setResult(null);
@@ -53,12 +136,11 @@ function QuickPage() {
 
     abortRef.current = analyzeQuery(
       sql,
-      dialect,
-      schema,
+      targetDialect,
+      targetSchema,
       (event: SSEEvent) => {
         eventsRef.current.push(event);
 
-        // Convert SSE event to log entry
         const agentLevel = (e: SSEEvent): LogEntry["level"] => {
           if (e.type === "agent_error" || e.type === "error") return "critical";
           if (e.severity === "critical") return "critical";
@@ -77,7 +159,6 @@ function QuickPage() {
 
         setLog((prev) => [...prev, entry]);
 
-        // On complete, build the result
         if (event.type === "complete") {
           const built = buildResultFromEvents(eventsRef.current);
           if (built) setResult(built);
@@ -85,7 +166,7 @@ function QuickPage() {
         }
 
         if (event.type === "error") {
-          setError(event.message || "Unknown error");
+          setError(event.message || "Unknown error occurred");
           setRunning(false);
         }
       },
@@ -94,10 +175,14 @@ function QuickPage() {
         setRunning(false);
         setLog((prev) => [
           ...prev,
-          { time: "", agent: "error", message: errMsg, level: "critical" },
+          { time: "", agent: "Error Handler", message: errMsg, level: "critical" },
         ]);
       },
     );
+  };
+
+  const runAnalysis = () => {
+    runAnalysisWithQuery(query, dialect, schema);
   };
 
   const dialectSelect = (
@@ -117,69 +202,81 @@ function QuickPage() {
     </div>
   );
 
-  const runButton = (
-    <button
-      onClick={runAnalysis}
-      disabled={running}
-      className="bg-primary text-primary-foreground text-sm font-medium px-4 py-1.5 rounded-md hover:bg-primary/90 transition-colors disabled:opacity-60"
-    >
-      {running ? "Analyzing..." : "Run Analysis"}
-    </button>
+  const right = (
+    <div className="flex items-center gap-2">
+      {(query.trim() || schema.trim() || result) && (
+        <button
+          onClick={clearQuickWorkspace}
+          className="border border-border text-text-secondary hover:text-critical text-sm font-medium px-3 py-1.5 rounded-md hover:bg-elevated/40 transition-colors flex items-center gap-1.5"
+          title="Clear sandbox inputs and results"
+        >
+          <Trash2 size={13} />
+          <span>Clear Sandbox</span>
+        </button>
+      )}
+      <button
+        onClick={runAnalysis}
+        disabled={running}
+        className="bg-primary text-primary-foreground text-sm font-medium px-4 py-1.5 rounded-md hover:bg-primary/90 transition-colors disabled:opacity-60"
+      >
+        {running ? "Analyzing..." : "Run Analysis"}
+      </button>
+    </div>
   );
 
   return (
     <AuthGuard>
-    <div className="h-screen flex flex-col bg-background">
-      <TopBar showBack center={dialectSelect} right={runButton} />
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-[35fr_30fr_35fr] min-h-0">
-        {/* Left: Editor */}
-        <section className="flex flex-col border-r border-border min-h-0">
-          <div className="flex border-b border-border shrink-0">
-            <TabBtn active={tab === "query"} onClick={() => setTab("query")}>
-              Query
-            </TabBtn>
-            <TabBtn active={tab === "schema"} onClick={() => setTab("schema")}>
-              Schema
-            </TabBtn>
-          </div>
-          <div className="flex-1 min-h-0 relative bg-code">
-            <CodeEditor
-              value={tab === "query" ? query : schema}
-              onChange={tab === "query" ? setQuery : setSchema}
-              placeholder={tab === "query" ? `-- Paste your SQL query here\n${DEFAULT_QUERY}` : DEFAULT_SCHEMA}
-            />
-          </div>
-          {tab === "query" && (
-            <div className="border-t border-border px-3 py-2 flex items-center gap-4 text-[12px] font-mono text-text-muted shrink-0">
-              {Object.keys(sampleQueries).map((name) => (
-                <button
-                  key={name}
-                  onClick={() => setQuery(sampleQueries[name])}
-                  className="hover:text-primary transition-colors"
-                >
-                  ▸ {name}
-                </button>
-              ))}
+      <div className="h-screen flex flex-col bg-background">
+        <TopBar showBack center={dialectSelect} right={right} />
+        <div className="flex-1 grid grid-cols-1 lg:grid-cols-[35fr_30fr_35fr] min-h-0">
+          {/* Left: Editor */}
+          <section className="flex flex-col border-r border-border min-h-0">
+            <div className="flex border-b border-border shrink-0">
+              <TabBtn active={tab === "query"} onClick={() => setTab("query")}>
+                Query
+              </TabBtn>
+              <TabBtn active={tab === "schema"} onClick={() => setTab("schema")}>
+                Schema
+              </TabBtn>
             </div>
-          )}
-        </section>
-
-        {/* Middle: Log */}
-        <section className="border-r border-border min-h-0 flex flex-col">
-          <ActivityLog entries={log} active={running} />
-        </section>
-
-        {/* Right: Results */}
-        <section className="min-h-0 flex flex-col">
-          {error && (
-            <div className="p-4 text-critical text-sm font-mono border-b border-border">
-              Error: {error}
+            <div className="flex-1 relative bg-code">
+              {tab === "query" ? (
+                <CodeEditor
+                  value={query}
+                  onChange={setQuery}
+                  placeholder={DEFAULT_QUERY}
+                />
+              ) : (
+                <CodeEditor
+                  value={schema}
+                  onChange={setSchema}
+                  placeholder={DEFAULT_SCHEMA}
+                />
+              )}
             </div>
-          )}
-          <ResultsPanel result={result} />
-        </section>
+          </section>
+
+          {/* Middle: Streaming logs */}
+          <section className="flex flex-col border-r border-border min-h-0">
+            <div className="h-10 border-b border-border px-4 flex items-center shrink-0">
+              <span className="section-label">Agentic Pipelines Logs</span>
+            </div>
+            <div className="flex-1 min-h-0 bg-panel">
+              <ActivityLog entries={log} active={running} />
+            </div>
+          </section>
+
+          {/* Right: Results */}
+          <section className="min-h-0 flex flex-col bg-background">
+            {error && (
+              <div className="p-4 text-critical text-sm font-mono border-b border-border bg-panel">
+                Error: {error}
+              </div>
+            )}
+            <ResultsPanel result={result} />
+          </section>
+        </div>
       </div>
-    </div>
     </AuthGuard>
   );
 }
@@ -196,7 +293,7 @@ function TabBtn({
   return (
     <button
       onClick={onClick}
-      className={`px-4 h-10 text-sm transition-colors relative ${
+      className={`px-4 h-10 text-sm font-mono font-medium border-r border-border relative transition-colors ${
         active ? "text-text-primary" : "text-text-muted hover:text-text-secondary"
       }`}
     >

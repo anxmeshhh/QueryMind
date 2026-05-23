@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Lock } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
 import { AuthGuard } from "@/components/AuthGuard";
@@ -42,6 +42,108 @@ function ConnectPage() {
   const [log, setLog] = useState<LogEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   const eventsRef = useRef<SSEEvent[]>([]);
+
+  // Load connection state on mount (Workspace Persistence)
+  useEffect(() => {
+    try {
+      const savedUrl = localStorage.getItem("qm_conn_url");
+      const savedConnected = localStorage.getItem("qm_conn_connected");
+      const savedConnInfo = localStorage.getItem("qm_conn_info");
+      const savedSchema = localStorage.getItem("qm_conn_schema");
+      const savedQuery = localStorage.getItem("qm_conn_query");
+      const savedPlanNodes = localStorage.getItem("qm_conn_plan_nodes");
+      const savedResult = localStorage.getItem("qm_conn_result");
+      const savedLog = localStorage.getItem("qm_conn_log");
+      const savedExplained = localStorage.getItem("qm_conn_explained");
+
+      if (savedUrl) setUrl(savedUrl);
+      if (savedConnected) setConnected(JSON.parse(savedConnected));
+      if (savedConnInfo) setConnInfo(savedConnInfo);
+      if (savedSchema) setSchema(JSON.parse(savedSchema));
+      if (savedQuery) setQuery(savedQuery);
+      if (savedPlanNodes) setPlanNodes(JSON.parse(savedPlanNodes));
+      if (savedResult) setResult(JSON.parse(savedResult));
+      if (savedLog) setLog(JSON.parse(savedLog));
+      if (savedExplained) setExplained(JSON.parse(savedExplained));
+    } catch (e) {
+      console.error("Failed to restore connection page state:", e);
+    }
+  }, []);
+
+  // Save changes to persist workspace
+  useEffect(() => {
+    try {
+      localStorage.setItem("qm_conn_url", url);
+    } catch {}
+  }, [url]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("qm_conn_connected", JSON.stringify(connected));
+    } catch {}
+  }, [connected]);
+
+  useEffect(() => {
+    try {
+      if (connInfo) localStorage.setItem("qm_conn_info", connInfo);
+    } catch {}
+  }, [connInfo]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("qm_conn_schema", JSON.stringify(schema));
+    } catch {}
+  }, [schema]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("qm_conn_query", query);
+    } catch {}
+  }, [query]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("qm_conn_plan_nodes", JSON.stringify(planNodes));
+    } catch {}
+  }, [planNodes]);
+
+  useEffect(() => {
+    try {
+      if (result) localStorage.setItem("qm_conn_result", JSON.stringify(result));
+    } catch {}
+  }, [result]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("qm_conn_log", JSON.stringify(log));
+    } catch {}
+  }, [log]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("qm_conn_explained", JSON.stringify(explained));
+    } catch {}
+  }, [explained]);
+
+  const disconnectDatabase = () => {
+    setConnected(false);
+    setConnInfo(null);
+    setSchema([]);
+    setExplained(false);
+    setPlanNodes([]);
+    setResult(null);
+    setLog([]);
+    setError(null);
+    try {
+      localStorage.removeItem("qm_conn_connected");
+      localStorage.removeItem("qm_conn_info");
+      localStorage.removeItem("qm_conn_schema");
+      localStorage.removeItem("qm_conn_plan_nodes");
+      localStorage.removeItem("qm_conn_result");
+      localStorage.removeItem("qm_conn_log");
+      localStorage.removeItem("qm_conn_explained");
+    } catch {}
+  };
 
   const handleConnect = () => {
     if (!url.trim()) return;
@@ -139,7 +241,19 @@ function ConnectPage() {
   return (
     <AuthGuard>
     <div className="min-h-screen flex flex-col bg-background">
-      <TopBar showBack />
+      <TopBar
+        showBack
+        right={
+          connected && (
+            <button
+              onClick={disconnectDatabase}
+              className="border border-border text-text-secondary hover:text-critical text-sm font-medium px-3 py-1.5 rounded-md hover:bg-elevated/40 transition-colors"
+            >
+              Disconnect
+            </button>
+          )
+        }
+      />
       <main className="flex-1 px-6 py-8 max-w-[1280px] mx-auto w-full space-y-6">
         {/* Connection card */}
         <div className="max-w-[600px] mx-auto bg-panel border border-border rounded-lg p-6">
