@@ -2,6 +2,7 @@
 
 import sqlglot
 from sqlglot import exp
+import re
 
 
 def parse_query(sql: str, dialect: str = "postgres") -> dict:
@@ -83,12 +84,16 @@ def parse_query(sql: str, dialect: str = "postgres") -> dict:
         })
 
     # Check for implicit joins (comma-separated FROM)
-    from_clause = parsed.find(exp.From)
     implicit_joins = False
-    if from_clause:
-        from_tables = list(from_clause.find_all(exp.Table))
-        if len(from_tables) > 1:
-            implicit_joins = True
+    sql_upper = sql.upper()
+    if "FROM" in sql_upper:
+        parts = re.split(r"\bFROM\b", sql_upper, maxsplit=1)
+        if len(parts) > 1:
+            from_part = parts[1]
+            for keyword in ["WHERE", "JOIN", "GROUP BY", "ORDER BY", "LIMIT", "HAVING", "UNION"]:
+                from_part = re.split(rf"\b{keyword}\b", from_part, maxsplit=1)[0]
+            if "," in from_part:
+                implicit_joins = True
 
     # Extract WHERE conditions
     conditions = []

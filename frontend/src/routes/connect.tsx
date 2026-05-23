@@ -1,14 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useRef, useEffect } from "react";
-import { Lock } from "lucide-react";
+import { Lock, Play, Layers } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
 import { AuthGuard } from "@/components/AuthGuard";
 import { ActivityLog, type LogEntry } from "@/components/ActivityLog";
 import { ResultsPanel } from "@/components/ResultsPanel";
-import { connectDatabase, explainQuery, type SSEEvent } from "@/lib/api";
+import { SchemaERD, type ERDTable } from "@/components/scan/SchemaERD";
+import { BatchDashboard, type AggregateImpact, type CodebaseOptimization } from "@/components/scan/BatchDashboard";
+import { connectDatabase, explainQuery, analyzeQuery, type SSEEvent } from "@/lib/api";
 import { buildResultFromEvents } from "@/lib/mock-data";
 import type { SchemaTable, PlanNode, AnalysisResult } from "@/lib/mock-data";
 import { saveAnalysis } from "@/lib/history";
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/connect")({
@@ -44,6 +47,20 @@ function ConnectPage() {
   const [log, setLog] = useState<LogEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   const eventsRef = useRef<SSEEvent[]>([]);
+
+  // Batch analysis state (full-project analysis on connected DB)
+  const [analyzingAll, setAnalyzingAll] = useState(false);
+  const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0 });
+  const [aggregate, setAggregate] = useState<AggregateImpact | null>(null);
+  const [selectedOpt, setSelectedOpt] = useState<CodebaseOptimization | null>(null);
+  const [activeTab, setActiveTab] = useState<"schema" | "query" | "dashboard">("schema");
+  const queryInputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Keyboard shortcuts
+  useKeyboardShortcuts({
+    onRun: () => { if (connected && !explaining) handleExplain(); },
+    onFocusInput: () => queryInputRef.current?.focus(),
+  });
 
   // Load connection state on mount (Workspace Persistence)
   useEffect(() => {
@@ -274,6 +291,15 @@ function ConnectPage() {
           if (built) {
             setResult(built);
             saveAnalysis("connect", query, built, "postgresql", schema);
+            
+            // Award XP
+            try {
+              const currentXp = parseInt(localStorage.getItem("qm_xp") || "0");
+              const earnedXp = 25 + (built.issues?.length || 0) * 10;
+              localStorage.setItem("qm_xp", String(currentXp + earnedXp));
+              window.dispatchEvent(new Event("qm-xp-updated"));
+              toast.success(`Analysis Complete! Earned +${earnedXp} XP`);
+            } catch {}
           }
           setExplained(true);
           setExplaining(false);
@@ -284,6 +310,113 @@ function ConnectPage() {
         setExplaining(false);
       },
     );
+  };
+
+  /** Run full analysis on every table's typical queries using schema context */
+  const handleAnalyzeAll = async () => {
+    if (schema.length === 0) return;
+    setAnalyzingAll(true);
+    setAggregate(null);
+    setSelectedOpt(null);
+    setBatchProgress({ done: 0, total: schema.length });
+
+    // Build schema DDL from discovered schema
+    const schemaDDL = schema.map((t) => {
+      const cols = (t.column_details || []).map((c) =>
+        `${c.name} ${c.type}${c.nullable === false ? " NOT NULL" : ""}`
+      ).join(", ");
+      return `CREATE TABLE ${t.table} (${cols});`;
+    }).join("\n");
+
+    // Generate sample SELECT queries for each table
+    const sampleQueries = schema.map((t) => ({
+      table: t.table,
+      sql: `SELECT * FROM ${t.table} LIMIT 100;`,
+    }));
+
+    const optimizations: CodebaseOptimization[] = [];
+    let allIssues = 0;
+    let totalScoreBefore = 0;
+    let totalScoreAfter = 0;
+    let unchangedCount = 0;
+    let blockedIndexes = 0;
+    let safetyScoreSum = 0;
+    const allIndexes: any[] = [];
+    let completed = 0;
+
+    // Analyze each table's query sequentially
+    for (const sq of sampleQueries) {
+      try {
+        await new Promise<void>((resolve) => {
+          const events: SSEEvent[] = [];
+          analyzeQuery(sq.sql, "postgresql", schemaDDL, (event) => {
+            events.push(event);
+            if (event.type === "complete") {
+              const built = buildResultFromEvents(events);
+              if (built) {
+                const opt: CodebaseOptimization = {
+                  file: sq.table,
+                  line: "SELECT *",
+                  original: sq.sql,
+                  optimized: built.optimizedSql || sq.sql,
+                  scoreBefore: built.scoreBefore,
+                  scoreAfter: built.scoreAfter,
+                  issues: built.issues,
+                  indexes: built.indexes,
+                  guard: built.guard,
+                };
+                optimizations.push(opt);
+                totalScoreBefore += built.scoreBefore;
+                totalScoreAfter += built.scoreAfter;
+                allIssues += built.issues.length;
+                built.indexes.forEach((idx) => {
+                  if (!allIndexes.find((x) => x.sql === idx.sql)) allIndexes.push(idx);
+                });
+                if (built.guard) {
+                  safetyScoreSum += built.guard.safety_score;
+                  blockedIndexes += built.guard.blocked.length;
+                } else {
+                  safetyScoreSum += 100;
+                }
+                if (built.optimizedSql === sq.sql || !built.optimizedSql) unchangedCount++;
+              }
+              completed++;
+              setBatchProgress({ done: completed, total: sampleQueries.length });
+              resolve();
+            }
+            if (event.type === "error") resolve();
+          }, () => resolve());
+        });
+      } catch { /* skip failed */ }
+    }
+
+    const count = optimizations.length || 1;
+    const avgBefore = Math.round(totalScoreBefore / count);
+    const avgAfter = Math.round(totalScoreAfter / count);
+    const speedup = avgBefore > 0 ? (avgAfter / avgBefore).toFixed(1) : "1.0";
+
+    setAggregate({
+      avgScoreBefore: avgBefore,
+      avgScoreAfter: avgAfter,
+      speedupFactor: speedup,
+      totalIssuesCount: allIssues,
+      uniqueIndexes: allIndexes,
+      optimizations,
+      unchangedCount,
+      blockedIndexes,
+      safetyScore: Math.round(safetyScoreSum / count),
+    });
+    // Award batch XP
+    try {
+      const currentXp = parseInt(localStorage.getItem("qm_xp") || "0");
+      const earnedXp = optimizations.length * 25 + allIssues * 10;
+      localStorage.setItem("qm_xp", String(currentXp + earnedXp));
+      window.dispatchEvent(new Event("qm-xp-updated"));
+    } catch {}
+
+    setActiveTab("dashboard");
+    setAnalyzingAll(false);
+    toast.success(`Analyzed ${optimizations.length} tables`);
   };
 
   return (
@@ -354,138 +487,259 @@ function ConnectPage() {
 
         {connected && (
           <>
-            {/* Schema */}
-            {schema.length > 0 && (
-              <div className="bg-panel border border-border rounded-lg overflow-hidden">
-                <div className="h-10 px-4 flex items-center gap-3 border-b border-border">
-                  <span className="section-label">Schema</span>
-                  <span className="font-mono text-primary text-[13px]">{connInfo?.split(" — ")[1]}</span>
-                </div>
-                <table className="w-full text-[13px] font-mono">
-                  <thead>
-                    <tr className="bg-elevated text-text-secondary text-left">
-                      <th className="px-4 py-2 font-medium">Table</th>
-                      <th className="px-4 py-2 font-medium">Columns</th>
-                      <th className="px-4 py-2 font-medium">Rows</th>
-                      <th className="px-4 py-2 font-medium">Indexes</th>
-                      <th className="px-4 py-2 font-medium">Size</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {schema.map((t, i) => (
-                      <tr
-                        key={t.table}
-                        onClick={() => setExpanded(expanded === t.table ? null : t.table)}
-                        className={`cursor-pointer hover:bg-elevated transition-colors ${
-                          i % 2 === 0 ? "bg-panel" : "bg-code"
-                        }`}
-                      >
-                        <td className="px-4 py-2 text-primary">{t.table}</td>
-                        <td className="px-4 py-2 text-text-primary">{t.columns}</td>
-                        <td className="px-4 py-2 text-text-primary">
-                          {t.rows.toLocaleString()}
-                        </td>
-                        <td className="px-4 py-2 text-text-primary">{t.indexes}</td>
-                        <td className="px-4 py-2 text-text-secondary">{t.size}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {expanded && (
-                  <div className="border-t border-border bg-code px-4 py-3 font-mono text-[12.5px] text-text-secondary">
-                    <div className="text-text-muted mb-2">Columns in {expanded}</div>
-                    <div className="grid grid-cols-3 gap-x-6 gap-y-1">
-                      {schema
-                        .find((t) => t.table === expanded)
-                        ?.column_details?.map((col) => (
-                          <span key={col.name}>
-                            {col.name}{" "}
-                            <span className="text-text-disabled">{col.type}</span>
-                          </span>
-                        ))}
-                    </div>
-                  </div>
-                )}
+            {/* Tab bar + Analyze All CTA */}
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex gap-1 bg-panel border border-border rounded-lg p-0.5">
+                {([["schema", "Schema"], ["query", "Query"], ["dashboard", "Dashboard"]] as const).map(([key, label]) => (
+                  <button
+                    key={key}
+                    onClick={() => setActiveTab(key)}
+                    className={`px-4 py-1.5 rounded-md text-xs font-mono transition-all ${
+                      activeTab === key
+                        ? "bg-primary/15 text-primary font-semibold"
+                        : "text-text-muted hover:text-text-secondary"
+                    }`}
+                  >
+                    {label}
+                    {key === "dashboard" && aggregate && (
+                      <span className="ml-1.5 w-1.5 h-1.5 rounded-full bg-success inline-block" />
+                    )}
+                  </button>
+                ))}
               </div>
-            )}
-
-            {/* Activity Log */}
-            {log.length > 0 && (
-              <div className="bg-panel border border-border rounded-lg overflow-hidden max-h-[300px]">
-                <ActivityLog entries={log} active={connecting} />
-              </div>
-            )}
-
-            {/* Query + Results */}
-            <div className="bg-panel border border-border rounded-lg overflow-hidden">
-              <div className="h-10 px-4 flex items-center justify-between border-b border-border">
-                <span className="section-label">Query</span>
+              {schema.length > 0 && (
                 <button
-                  onClick={handleExplain}
-                  disabled={explaining}
-                  className="bg-primary text-primary-foreground text-xs font-medium px-3 py-1 rounded-md hover:bg-primary/90 transition-colors disabled:opacity-60"
+                  onClick={handleAnalyzeAll}
+                  disabled={analyzingAll}
+                  className="bg-primary text-primary-foreground text-xs font-semibold px-4 py-2 rounded-md hover:bg-primary/90 transition-all disabled:opacity-60 flex items-center gap-2 qm-glow"
                 >
-                  {explaining ? "Running..." : "Run EXPLAIN ANALYZE"}
+                  {analyzingAll ? (
+                    <>
+                      <span className="w-3 h-3 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+                      Analyzing {batchProgress.done}/{batchProgress.total}...
+                    </>
+                  ) : (
+                    <>
+                      <Play size={12} /> Analyze All Tables
+                    </>
+                  )}
                 </button>
-              </div>
-              <textarea
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                spellCheck={false}
-                className="w-full bg-code text-text-primary font-mono text-[13px] leading-6 px-4 py-3 outline-none resize-none min-h-[140px]"
-              />
+              )}
             </div>
 
-            {explained && (
+            {/* Schema Tab */}
+            {activeTab === "schema" && (
               <>
-                {planNodes.length > 0 && (
-                  <div className="bg-panel border border-border rounded-lg overflow-hidden">
-                    <div className="h-10 px-4 flex items-center border-b border-border">
-                      <span className="section-label">Execution Plan</span>
+                {/* Stats bar */}
+                {schema.length > 0 && (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className="bg-panel border border-border rounded-lg p-4 qm-stat-card">
+                      <div className="text-text-disabled text-[10px] font-mono uppercase">Tables</div>
+                      <div className="text-2xl font-mono font-bold text-primary mt-1">{schema.length}</div>
                     </div>
-                    <div className="p-4 space-y-1.5 font-mono text-[12.5px]">
-                      {planNodes.map((n, i) => (
-                        <div key={i} className="flex items-center gap-3">
-                          <span
-                            className="text-text-primary"
-                            style={{ paddingLeft: `${n.depth * 16}px`, minWidth: "260px" }}
-                          >
-                            {n.depth > 0 && <span className="text-text-disabled">└─ </span>}
-                            {n.operation}
-                          </span>
-                          <span className="text-text-muted w-32">{n.cost}</span>
-                          <span className="text-primary w-24">
-                            {n.rows > 0 ? `rows=${n.rows.toLocaleString()}` : ""}
-                          </span>
-                          {n.pct > 0 && (
-                            <div className="flex-1 max-w-[200px] h-1.5 bg-elevated rounded-sm overflow-hidden">
-                              <div
-                                className={
-                                  n.tone === "critical"
-                                    ? "bg-critical h-full"
-                                    : n.tone === "warning"
-                                    ? "bg-warning h-full"
-                                    : "bg-success h-full"
-                                }
-                                style={{ width: `${n.pct}%` }}
-                              />
-                            </div>
-                          )}
-                          {n.pct > 0 && (
-                            <span className="text-text-muted w-10 text-right">{n.pct}%</span>
-                          )}
-                        </div>
-                      ))}
+                    <div className="bg-panel border border-border rounded-lg p-4 qm-stat-card">
+                      <div className="text-text-disabled text-[10px] font-mono uppercase">Columns</div>
+                      <div className="text-2xl font-mono font-bold text-text-primary mt-1">
+                        {schema.reduce((a, t) => a + (typeof t.columns === "number" ? t.columns : (t.column_details?.length || 0)), 0)}
+                      </div>
+                    </div>
+                    <div className="bg-panel border border-border rounded-lg p-4 qm-stat-card">
+                      <div className="text-text-disabled text-[10px] font-mono uppercase">Indexes</div>
+                      <div className="text-2xl font-mono font-bold text-info mt-1">
+                        {schema.reduce((a, t) => a + t.indexes, 0)}
+                      </div>
+                    </div>
+                    <div className="bg-panel border border-border rounded-lg p-4 qm-stat-card">
+                      <div className="text-text-disabled text-[10px] font-mono uppercase">Total Rows</div>
+                      <div className="text-2xl font-mono font-bold text-warning mt-1">
+                        {schema.reduce((a, t) => a + t.rows, 0).toLocaleString()}
+                      </div>
                     </div>
                   </div>
                 )}
 
-                {result && (
+                {/* Schema Table */}
+                {schema.length > 0 && (
                   <div className="bg-panel border border-border rounded-lg overflow-hidden">
-                    <ResultsPanel result={result} />
+                    <div className="h-10 px-4 flex items-center gap-3 border-b border-border">
+                      <span className="section-label">Schema</span>
+                      <span className="font-mono text-primary text-[13px]">{connInfo?.split(" — ")[1]}</span>
+                    </div>
+                    <table className="w-full text-[13px] font-mono">
+                      <thead>
+                        <tr className="bg-elevated text-text-secondary text-left">
+                          <th className="px-4 py-2 font-medium">Table</th>
+                          <th className="px-4 py-2 font-medium">Columns</th>
+                          <th className="px-4 py-2 font-medium">Rows</th>
+                          <th className="px-4 py-2 font-medium">Indexes</th>
+                          <th className="px-4 py-2 font-medium">Size</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {schema.map((t, i) => (
+                          <tr
+                            key={t.table}
+                            onClick={() => setExpanded(expanded === t.table ? null : t.table)}
+                            className={`cursor-pointer hover:bg-elevated transition-colors ${
+                              i % 2 === 0 ? "bg-panel" : "bg-code"
+                            }`}
+                          >
+                            <td className="px-4 py-2 text-primary">{t.table}</td>
+                            <td className="px-4 py-2 text-text-primary">{t.columns}</td>
+                            <td className="px-4 py-2 text-text-primary">
+                              {t.rows.toLocaleString()}
+                            </td>
+                            <td className="px-4 py-2 text-text-primary">{t.indexes}</td>
+                            <td className="px-4 py-2 text-text-secondary">{t.size}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {expanded && (
+                      <div className="border-t border-border bg-code px-4 py-3 font-mono text-[12.5px] text-text-secondary">
+                        <div className="text-text-muted mb-2">Columns in {expanded}</div>
+                        <div className="grid grid-cols-3 gap-x-6 gap-y-1">
+                          {schema
+                            .find((t) => t.table === expanded)
+                            ?.column_details?.map((col) => (
+                              <span key={col.name}>
+                                {col.name}{" "}
+                                <span className="text-text-disabled">{col.type}</span>
+                              </span>
+                            ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
+
+                {/* ERD Diagram */}
+                {schema.length > 0 && (
+                  <SchemaERD
+                    tables={schema.map((t) => ({
+                      name: t.table,
+                      columns: t.column_details?.map((c) => ({ name: c.name, type: c.type })) || [],
+                      indexes: [],
+                      primary_key: [],
+                      foreign_keys: [],
+                    }))}
+                    title="Live Database Schema (ERD)"
+                  />
+                )}
               </>
+            )}
+
+            {/* Query Tab */}
+            {activeTab === "query" && (
+              <>
+                {/* Activity Log */}
+                {log.length > 0 && (
+                  <div className="bg-panel border border-border rounded-lg overflow-hidden max-h-[300px]">
+                    <ActivityLog entries={log} active={connecting} />
+                  </div>
+                )}
+
+                {/* Query + Results */}
+                <div className="bg-panel border border-border rounded-lg overflow-hidden">
+                  <div className="h-10 px-4 flex items-center justify-between border-b border-border">
+                    <span className="section-label">Query <span className="text-text-disabled text-[10px] ml-2">Ctrl+Enter to run</span></span>
+                    <button
+                      onClick={handleExplain}
+                      disabled={explaining}
+                      className="bg-primary text-primary-foreground text-xs font-medium px-3 py-1 rounded-md hover:bg-primary/90 transition-colors disabled:opacity-60"
+                    >
+                      {explaining ? "Running..." : "Run EXPLAIN ANALYZE"}
+                    </button>
+                  </div>
+                  <textarea
+                    ref={queryInputRef}
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    spellCheck={false}
+                    className="w-full bg-code text-text-primary font-mono text-[13px] leading-6 px-4 py-3 outline-none resize-none min-h-[140px]"
+                  />
+                </div>
+
+                {explained && (
+                  <>
+                    {planNodes.length > 0 && (
+                      <div className="bg-panel border border-border rounded-lg overflow-hidden">
+                        <div className="h-10 px-4 flex items-center border-b border-border">
+                          <span className="section-label">Execution Plan</span>
+                        </div>
+                        <div className="p-4 space-y-1.5 font-mono text-[12.5px]">
+                          {planNodes.map((n, i) => (
+                            <div key={i} className="flex items-center gap-3">
+                              <span
+                                className="text-text-primary"
+                                style={{ paddingLeft: `${n.depth * 16}px`, minWidth: "260px" }}
+                              >
+                                {n.depth > 0 && <span className="text-text-disabled">└─ </span>}
+                                {n.operation}
+                              </span>
+                              <span className="text-text-muted w-32">{n.cost}</span>
+                              <span className="text-primary w-24">
+                                {n.rows > 0 ? `rows=${n.rows.toLocaleString()}` : ""}
+                              </span>
+                              {n.pct > 0 && (
+                                <div className="flex-1 max-w-[200px] h-1.5 bg-elevated rounded-sm overflow-hidden">
+                                  <div
+                                    className={
+                                      n.tone === "critical"
+                                        ? "bg-critical h-full"
+                                        : n.tone === "warning"
+                                        ? "bg-warning h-full"
+                                        : "bg-success h-full"
+                                    }
+                                    style={{ width: `${n.pct}%` }}
+                                  />
+                                </div>
+                              )}
+                              {n.pct > 0 && (
+                                <span className="text-text-muted w-10 text-right">{n.pct}%</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {result && (
+                      <div className="bg-panel border border-border rounded-lg overflow-hidden">
+                        <ResultsPanel result={result} />
+                      </div>
+                    )}
+                  </>
+                )}
+              </>
+            )}
+
+            {/* Dashboard Tab */}
+            {activeTab === "dashboard" && (
+              aggregate ? (
+                <BatchDashboard
+                  aggregate={aggregate}
+                  selectedOpt={selectedOpt}
+                  onSelectOpt={setSelectedOpt}
+                  onRecompute={handleAnalyzeAll}
+                  analyzingAll={analyzingAll}
+                />
+              ) : (
+                <div className="bg-panel border border-border rounded-lg p-12 text-center">
+                  <Layers size={32} className="text-text-disabled mx-auto mb-4" />
+                  <h3 className="text-text-primary font-semibold text-lg">No Analysis Yet</h3>
+                  <p className="text-text-muted text-sm mt-2 max-w-sm mx-auto">
+                    Click "Analyze All Tables" to run a full database health check with schema-aware AI optimization.
+                  </p>
+                  <button
+                    onClick={handleAnalyzeAll}
+                    disabled={analyzingAll || schema.length === 0}
+                    className="mt-6 bg-primary text-primary-foreground text-sm font-semibold px-6 py-2.5 rounded-md hover:bg-primary/90 transition-all disabled:opacity-60 qm-glow"
+                  >
+                    <Play size={14} className="inline mr-1.5" /> Analyze All Tables
+                  </button>
+                </div>
+              )
             )}
           </>
         )}

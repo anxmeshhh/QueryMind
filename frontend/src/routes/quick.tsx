@@ -8,6 +8,7 @@ import { ResultsPanel, type AnalysisResult } from "@/components/ResultsPanel";
 import { sampleQueries, buildResultFromEvents } from "@/lib/mock-data";
 import { analyzeQuery, type SSEEvent } from "@/lib/api";
 import { saveAnalysis } from "@/lib/history";
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { toast } from "sonner";
 
 interface QuickSearch {
@@ -232,6 +233,15 @@ function QuickPage() {
             setResult(built);
             // Save analysis history to DB asynchronously
             saveAnalysis("quick", sql, built, targetDialect, targetSchema);
+
+            // Award XP
+            try {
+              const currentXp = parseInt(localStorage.getItem("qm_xp") || "0");
+              const earnedXp = 25 + (built.issues?.length || 0) * 10;
+              localStorage.setItem("qm_xp", String(currentXp + earnedXp));
+              window.dispatchEvent(new Event("qm-xp-updated"));
+              toast.success(`Analysis Complete! Earned +${earnedXp} XP`);
+            } catch {}
           }
           setRunning(false);
         }
@@ -255,6 +265,10 @@ function QuickPage() {
   const runAnalysis = () => {
     runAnalysisWithQuery(query, dialect, schema);
   };
+
+  useKeyboardShortcuts({
+    onRun: () => { if (!running) runAnalysis(); }
+  });
 
   const dialectSelect = (
     <div className="relative">

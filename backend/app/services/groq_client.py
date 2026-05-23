@@ -13,7 +13,7 @@ def _get_client() -> Groq:
     return _client
 
 
-def ask_groq(prompt: str, system: str = "You are a senior database engineer and SQL optimization expert.") -> str:
+def ask_groq(prompt: str, system: str = "You are a senior database engineer and SQL optimization expert. Keep responses highly concise, token-optimized, and return only the requested JSON/SQL structure without extra conversation.", max_tokens: int = None) -> str:
     """Send a prompt to Groq and return the response text."""
     client = _get_client()
 
@@ -23,7 +23,7 @@ def ask_groq(prompt: str, system: str = "You are a senior database engineer and 
             {"role": "system", "content": system},
             {"role": "user", "content": prompt},
         ],
-        max_tokens=Config.GROQ_MAX_TOKENS,
+        max_tokens=max_tokens or Config.GROQ_MAX_TOKENS,
         temperature=Config.GROQ_TEMPERATURE,
     )
 

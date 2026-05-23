@@ -1,8 +1,10 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Zap, FolderSearch, Database, ArrowRight, Shield, Activity, Cpu, GitBranch } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Zap, FolderSearch, Database, ArrowRight, Shield, Activity, Cpu, GitBranch, Search, Clock } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
 import { AuthGuard } from "@/components/AuthGuard";
 import { useAuth } from "@/lib/auth";
+import { fetchRecentScans, type DBAnalysis } from "@/lib/history";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -45,13 +47,26 @@ const modes = [
 
 const stats = [
   { icon: Shield, value: "20", label: "Anti-pattern rules" },
-  { icon: Cpu, value: "8", label: "AI analysis agents" },
+  { icon: Cpu, value: "9", label: "AI analysis agents" },
   { icon: Activity, value: "~3s", label: "Average analysis time" },
   { icon: GitBranch, value: "3", label: "SQL dialects supported" },
 ];
 
 function Index() {
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const [quickSql, setQuickSql] = useState("");
+  const [recentScans, setRecentScans] = useState<DBAnalysis[]>([]);
+
+  useEffect(() => {
+    fetchRecentScans(5).then(setRecentScans).catch(() => {});
+  }, []);
+
+  const handleQuickPaste = () => {
+    if (quickSql.trim()) {
+      navigate({ to: "/quick", search: { q: quickSql.trim() } });
+    }
+  };
 
   return (
     <AuthGuard>
@@ -75,6 +90,28 @@ function Index() {
                 Scan your codebase, discover every SQL query, detect anti-patterns,
                 and get AI-powered optimization — all in one pipeline.
               </p>
+
+              {/* Quick-paste input */}
+              <div className="mt-8 max-w-[560px] mx-auto">
+                <div className="relative flex items-center">
+                  <Search size={16} className="absolute left-3 text-text-disabled pointer-events-none" />
+                  <input
+                    value={quickSql}
+                    onChange={(e) => setQuickSql(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleQuickPaste()}
+                    placeholder="Paste SQL here to quick-analyze..."
+                    className="w-full bg-code border border-border rounded-lg pl-10 pr-24 py-3 font-mono text-[13px] text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all"
+                  />
+                  <button
+                    onClick={handleQuickPaste}
+                    disabled={!quickSql.trim()}
+                    className="absolute right-1.5 bg-primary text-primary-foreground text-xs font-semibold px-3 py-1.5 rounded-md hover:bg-primary/90 transition-all disabled:opacity-40"
+                  >
+                    Analyze
+                  </button>
+                </div>
+                <div className="mt-2 text-text-disabled text-[10px] font-mono">Press Enter to analyze · Ctrl+K to focus</div>
+              </div>
             </div>
           </section>
 
@@ -134,6 +171,49 @@ function Index() {
               })}
             </div>
           </section>
+
+          {/* Recent Activity */}
+          {recentScans.length > 0 && (
+            <section className="border-t border-border px-6 py-8">
+              <div className="w-full max-w-[960px] mx-auto">
+                <div className="flex items-center justify-between mb-4">
+                  <span className="section-label flex items-center gap-1.5"><Clock size={12} /> Recent Activity</span>
+                  <span className="text-text-disabled text-[10px] font-mono">{recentScans.length} analyses</span>
+                </div>
+                <div className="space-y-2">
+                  {recentScans.map((scan, i) => (
+                    <Link
+                      key={scan.id || i}
+                      to={`/${scan.mode}` as "/quick" | "/scan" | "/connect"}
+                      className="flex items-center gap-4 bg-panel border border-border rounded-lg px-4 py-3 hover:border-primary/30 transition-all group"
+                    >
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                        scan.mode === "quick" ? "bg-cyan-500/10 text-cyan-400" :
+                        scan.mode === "scan" ? "bg-emerald-500/10 text-emerald-400" :
+                        "bg-violet-500/10 text-violet-400"
+                      }`}>
+                        {scan.mode === "quick" ? <Zap size={14} /> : scan.mode === "scan" ? <FolderSearch size={14} /> : <Database size={14} />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-text-primary text-sm font-mono truncate">
+                          {scan.original_query?.slice(0, 60) || "Analysis"}
+                        </div>
+                        <div className="text-text-disabled text-[10px] font-mono mt-0.5">
+                          {scan.mode} · {scan.dialect} · {new Date(scan.created_at).toLocaleDateString()}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-xs font-mono shrink-0">
+                        <span className="text-critical">{scan.performance_score_before}</span>
+                        <span className="text-text-disabled">→</span>
+                        <span className="text-success">{scan.performance_score_after}</span>
+                      </div>
+                      <ArrowRight size={12} className="text-text-disabled group-hover:text-primary transition-colors shrink-0" />
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            </section>
+          )}
 
           {/* Pipeline visual */}
           <section className="border-t border-border px-6 py-10">

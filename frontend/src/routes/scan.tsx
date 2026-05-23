@@ -7,6 +7,10 @@ import { ActivityLog, type LogEntry } from "@/components/ActivityLog";
 import { scanFiles, analyzeBatch, type SSEEvent } from "@/lib/api";
 import { saveScanResult, fetchRecentScans, type DBAnalysis } from "@/lib/history";
 import type { DiscoveredQuery } from "@/lib/mock-data";
+import { calculateComplexity } from "@/lib/complexity";
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import { SchemaERD } from "@/components/scan/SchemaERD";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/scan")({
   head: () => ({
@@ -424,7 +428,11 @@ function ScanPage() {
           const earnedXp = results.length * XP_PER_QUERY + allIssues.length * XP_PER_ISSUE;
           setXp((prev) => {
             const newXp = prev + earnedXp;
-            try { localStorage.setItem("qm_xp", String(newXp)); } catch {}
+            try { 
+              localStorage.setItem("qm_xp", String(newXp)); 
+              window.dispatchEvent(new Event("qm-xp-updated"));
+              toast.success(`Scan Complete! Earned +${earnedXp} XP`);
+            } catch {}
             return newXp;
           });
 
@@ -445,6 +453,18 @@ function ScanPage() {
       },
     );
   };
+
+  useKeyboardShortcuts({
+    onRun: () => {
+      if (files.length > 0 && !scanning && !analyzingAll) {
+        if (done && !aggregateResult) {
+          batchAnalyzeQueries();
+        } else if (!done) {
+          runScan();
+        }
+      }
+    }
+  });
 
   const right = (
     <div className="flex items-center gap-2">
@@ -852,60 +872,12 @@ function ScanPage() {
           )}
 
           {/* ── ERD Schema Diagram (shown after scan discovers schema) ── */}
-          {done && projectSchema.length > 0 && !aggregateResult && (
-            <div className="bg-panel border border-border rounded-lg overflow-hidden">
-              <div className="h-10 px-4 flex items-center justify-between border-b border-border">
-                <span className="section-label flex items-center gap-1.5"><Table2 size={12} className="text-primary" /> Discovered Database Schema (ERD)</span>
-                <span className="text-[10px] font-mono text-text-disabled">{projectSchema.length} tables · {projectSchema.reduce((a, t) => a + (t.columns?.length || 0), 0)} columns</span>
-              </div>
-              <div className="p-4 qm-erd-grid">
-                {projectSchema.map((table, i) => (
-                  <div key={i} className="qm-schema-card qm-fade-in" style={{ animationDelay: `${i * 60}ms` }}>
-                    <div className="qm-schema-card-header">
-                      <span>{table.name}</span>
-                      {table.indexes?.length > 0 && (
-                        <span className="text-[9px] bg-primary/10 text-primary px-1.5 rounded">{table.indexes.length} idx</span>
-                      )}
-                    </div>
-                    <div className="qm-schema-card-body">
-                      {(table.columns || []).slice(0, 8).map((col: any, j: number) => {
-                        const isPk = table.primary_key?.includes(col.name);
-                        const isFk = (table.foreign_keys || []).some((fk: any) => fk.column === col.name);
-                        return (
-                          <div key={j} className="qm-schema-col">
-                            {isPk && <Key size={9} className="text-yellow-500" />}
-                            {isFk && !isPk && <ArrowUpRight size={9} className="text-blue-400" />}
-                            {!isPk && !isFk && <span className="w-[9px]" />}
-                            <span className={isPk ? "qm-schema-col-pk" : isFk ? "qm-schema-col-fk" : ""}>{col.name}</span>
-                            <span className="qm-schema-col-type">{col.type || "?"}</span>
-                          </div>
-                        );
-                      })}
-                      {(table.columns || []).length > 8 && (
-                        <div className="qm-schema-col text-text-disabled text-[10px]">+{table.columns.length - 8} more columns</div>
-                      )}
-                    </div>
-                    {/* FK Relationships */}
-                    {(table.foreign_keys || []).length > 0 && (
-                      <div className="px-3 py-2 border-t border-border space-y-1">
-                        {table.foreign_keys.map((fk: any, k: number) => (
-                          <div key={k} className="text-[9px] font-mono text-info flex items-center gap-1">
-                            <ArrowUpRight size={8} /> {fk.column} → {fk.ref_table}.{fk.ref_column}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-              {ormModels.length > 0 && (
-                <div className="px-4 py-3 border-t border-border">
-                  <div className="text-[10px] font-mono text-text-muted">
-                    ORM Models Detected: {ormModels.map((m) => `${m.name} (${m.orm})`).join(", ")}
-                  </div>
-                </div>
-              )}
-            </div>
+          {done && projectSchema.length > 0 && (
+            <SchemaERD
+              tables={projectSchema}
+              ormModels={ormModels}
+              title="Discovered Database Schema (ERD)"
+            />
           )}
 
 
@@ -955,6 +927,17 @@ function ScanPage() {
                             {q.preview}
                           </div>
                         </div>
+                        {(() => {
+                          const comp = calculateComplexity(q.sql);
+                          return (
+                            <span
+                              className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded shrink-0 ${comp.color} bg-code border border-border`}
+                              title={comp.factors.length > 0 ? `Factors: ${comp.factors.join(", ")}` : "Simple query"}
+                            >
+                              {comp.label} ({comp.score}/10)
+                            </span>
+                          );
+                        })()}
                         <span className="text-[11px] font-mono bg-secondary text-text-secondary px-1.5 py-0.5 rounded shrink-0">
                           {q.language}
                         </span>

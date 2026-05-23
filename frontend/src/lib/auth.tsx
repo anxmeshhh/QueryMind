@@ -78,6 +78,64 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
   };
 
+  // Load profile from Supabase on login / state change
+  useEffect(() => {
+    if (!user) return;
+
+    const loadProfile = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("user_profiles")
+          .select("xp, level")
+          .eq("id", user.id)
+          .single();
+
+        if (data) {
+          const savedLocalXp = parseInt(localStorage.getItem("qm_xp") || "0");
+          // Merge whichever XP is higher to prevent data loss
+          const finalXp = Math.max(data.xp || 0, savedLocalXp);
+          localStorage.setItem("qm_xp", String(finalXp));
+          window.dispatchEvent(new Event("qm-xp-updated"));
+        } else if (error) {
+          // If profile doesn't exist, we insert it
+          const localXp = parseInt(localStorage.getItem("qm_xp") || "0");
+          const localLevel = 1 + Math.floor(localXp / 100);
+          await supabase.from("user_profiles").insert({
+            id: user.id,
+            display_name: user.email?.split("@")[0] || "Developer",
+            xp: localXp,
+            level: localLevel,
+          });
+        }
+      } catch (e) {
+        console.error("Failed to sync auth user profile:", e);
+      }
+    };
+
+    loadProfile();
+  }, [user]);
+
+  // Synchronize XP to Supabase whenever it changes locally
+  useEffect(() => {
+    if (!user) return;
+
+    const handleXpUpdate = async () => {
+      try {
+        const localXp = parseInt(localStorage.getItem("qm_xp") || "0");
+        const localLevel = 1 + Math.floor(localXp / 100);
+        await supabase
+          .from("user_profiles")
+          .update({ xp: localXp, level: localLevel })
+          .eq("id", user.id);
+      } catch (e) {
+        console.error("Failed to upload XP update to Supabase:", e);
+      }
+    };
+
+    window.addEventListener("qm-xp-updated", handleXpUpdate);
+    return () => window.removeEventListener("qm-xp-updated", handleXpUpdate);
+  }, [user]);
+
   return (
     <AuthContext.Provider
       value={{
