@@ -366,7 +366,7 @@ function QuickPage() {
                     const res = await nlToSql(nlPrompt, dialect);
                     setNlLoading(false);
                     if (res.error || !res.sql) {
-                      setError(res.error || "Could not generate SQL");
+                      setError(res.error || res.explanation || "Could not generate SQL");
                       return;
                     }
                     setQuery(res.sql);
