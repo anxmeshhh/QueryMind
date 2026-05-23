@@ -430,15 +430,13 @@ function ScanPage() {
 
           // Gamification: award XP
           const earnedXp = results.length * XP_PER_QUERY + allIssues.length * XP_PER_ISSUE;
-          setXp((prev) => {
-            const newXp = prev + earnedXp;
-            try { 
-              localStorage.setItem("qm_xp", String(newXp)); 
-              window.dispatchEvent(new Event("qm-xp-updated"));
-              toast.success(`Scan Complete! Earned +${earnedXp} XP`);
-            } catch {}
-            return newXp;
-          });
+          const newXp = xp + earnedXp;
+          setXp(newXp);
+          try { 
+            localStorage.setItem("qm_xp", String(newXp)); 
+            window.dispatchEvent(new Event("qm-xp-updated"));
+            toast.success(`Scan Complete! Earned +${earnedXp} XP`);
+          } catch {}
 
           // Save to history
           saveScanResult(queries.length, payload, "postgresql", projectSchema);
