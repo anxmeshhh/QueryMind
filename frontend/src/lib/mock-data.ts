@@ -4,17 +4,9 @@
  */
 
 import type { LogEntry } from "@/components/ActivityLog";
+import type { AnalysisResult } from "@/components/ResultsPanel";
 
-export type { LogEntry };
-
-export interface AnalysisResult {
-  scoreBefore: number;
-  scoreAfter: number;
-  improvement: string;
-  issues: { severity: string; title: string; description: string }[];
-  optimizedSql: string;
-  indexes: { table: string; sql: string; note: string }[];
-}
+export type { LogEntry, AnalysisResult };
 
 export interface DiscoveredQuery {
   severity: "critical" | "warning" | "success";
