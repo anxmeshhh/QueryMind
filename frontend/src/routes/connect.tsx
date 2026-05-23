@@ -723,7 +723,7 @@ function ConnectPage() {
 
                     {result && (
                       <div className="bg-panel border border-border rounded-lg overflow-hidden">
-                        <ResultsPanel result={result} />
+                        <ResultsPanel result={result} originalSql={query} />
                       </div>
                     )}
                   </>

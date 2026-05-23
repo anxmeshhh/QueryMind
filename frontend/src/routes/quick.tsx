@@ -365,7 +365,7 @@ function QuickPage() {
                 Error: {error}
               </div>
             )}
-            <ResultsPanel result={result} />
+            <ResultsPanel result={result} originalSql={query} />
           </section>
         </div>
       </div>

@@ -8,6 +8,7 @@ import { useState } from "react";
 import { ShieldCheck, RefreshCw, Play, CheckCircle2, Download, FileText } from "lucide-react";
 import { CopyButton } from "@/components/CopyButton";
 import { CodeBlock } from "@/components/ResultsPanel";
+import { OptimizationFlow } from "./OptimizationFlow";
 
 export interface CodebaseOptimization {
   file: string;
@@ -190,6 +191,14 @@ export function BatchDashboard({
                 <div className="px-4 py-2 border-b border-elevated">
                   <div className="text-[10px] font-mono text-text-disabled uppercase mb-1">Optimized</div>
                   <pre className="text-[12px] font-mono text-success whitespace-pre-wrap">{selectedOpt.optimized}</pre>
+                </div>
+                <div className="px-4 py-3 border-b border-elevated">
+                  <OptimizationFlow
+                    originalSql={selectedOpt.original}
+                    optimizedSql={selectedOpt.optimized}
+                    issues={selectedOpt.issues}
+                    indexes={selectedOpt.indexes}
+                  />
                 </div>
                 {selectedOpt.issues.length > 0 && (
                   <div className="px-4 py-2 border-b border-elevated">

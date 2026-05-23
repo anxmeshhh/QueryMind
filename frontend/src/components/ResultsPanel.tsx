@@ -1,6 +1,7 @@
 import { CopyButton } from "./CopyButton";
 import { useState } from "react";
 import { ChevronRight, ShieldCheck, ShieldAlert, Download, FileText } from "lucide-react";
+import { OptimizationFlow } from "./scan/OptimizationFlow";
 
 export interface Issue {
   severity: "CRITICAL" | "MEDIUM" | "LOW";
@@ -39,7 +40,7 @@ const sevStyles: Record<Issue["severity"], string> = {
   LOW: "bg-info/15 text-info",
 };
 
-export function ResultsPanel({ result }: { result: AnalysisResult | null }) {
+export function ResultsPanel({ result, originalSql = "SELECT * FROM users u, orders o WHERE u.id = o.user_id;" }: { result: AnalysisResult | null; originalSql?: string }) {
   if (!result) {
     return (
       <div className="h-full flex items-center justify-center text-text-disabled font-mono text-sm">
@@ -143,6 +144,16 @@ export function ResultsPanel({ result }: { result: AnalysisResult | null }) {
           </div>
         </div>
       )}
+
+      {/* Interactive Optimization Flowchart */}
+      <div className="px-4 py-3 border-b border-border">
+        <OptimizationFlow
+          originalSql={originalSql}
+          optimizedSql={result.optimizedSql}
+          issues={result.issues}
+          indexes={result.indexes}
+        />
+      </div>
 
       {/* Issues */}
       <div className="border-b border-border">

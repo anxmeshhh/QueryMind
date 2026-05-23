@@ -445,3 +445,13 @@
 .qm-fade-in {
   animation: qm-fade-in 0.35s ease-out both;
 }
+
+/* ── N8N Flow Connectors Animation ───────────────────── */
+@keyframes qm-flow-dash {
+  to {
+    stroke-dashoffset: -20;
+  }
+}
+.qm-flow-line {
+  animation: qm-flow-dash 0.8s linear infinite;
+}
