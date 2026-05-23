@@ -23,6 +23,9 @@ export interface SchemaTable {
   indexes: number;
   size: string;
   column_details?: { name: string; type: string; nullable: boolean }[];
+  index_details?: any[];
+  primary_key?: string[];
+  foreign_keys?: any[];
 }
 
 export interface PlanNode {

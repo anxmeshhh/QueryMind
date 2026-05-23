@@ -194,6 +194,38 @@ def _discover_postgres(conn_str: str) -> dict:
         """, (tname,))
         indexes = [{"name": r[0], "definition": r[1]} for r in cur.fetchall()]
 
+        # Primary key discovery with safety
+        primary_key = []
+        try:
+            cur.execute("""
+                SELECT a.attname
+                FROM pg_index i
+                JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+                WHERE i.indrelid = %s::regclass AND i.indisprimary;
+            """, (tname,))
+            primary_key = [row[0] for row in cur.fetchall()]
+        except Exception:
+            try: conn.rollback()
+            except: pass
+
+        # Foreign key discovery with safety
+        foreign_keys = []
+        try:
+            cur.execute("""
+                SELECT
+                    kcu.column_name,
+                    ccu.table_name AS ref_table,
+                    ccu.column_name AS ref_column
+                FROM information_schema.table_constraints tc
+                JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name
+                JOIN information_schema.constraint_column_usage ccu ON ccu.constraint_name = tc.constraint_name
+                WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_name = %s;
+            """, (tname,))
+            foreign_keys = [{"column": r[0], "ref_table": r[1], "ref_column": r[2]} for r in cur.fetchall()]
+        except Exception:
+            try: conn.rollback()
+            except: pass
+
         # Table size
         cur.execute(f"SELECT pg_size_pretty(pg_total_relation_size(%s));", (tname,))
         size = cur.fetchone()
@@ -206,6 +238,8 @@ def _discover_postgres(conn_str: str) -> dict:
             "rows": int(row_count),
             "indexes": len(indexes),
             "index_details": indexes,
+            "primary_key": primary_key,
+            "foreign_keys": foreign_keys,
             "size": size,
         })
 

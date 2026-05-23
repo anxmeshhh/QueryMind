@@ -348,7 +348,22 @@ function ConnectPage() {
     for (const sq of sampleQueries) {
       try {
         await new Promise<void>((resolve) => {
+          let resolved = false;
           const events: SSEEvent[] = [];
+
+          const safeResolve = () => {
+            if (resolved) return;
+            resolved = true;
+            clearTimeout(timer);
+            completed++;
+            setBatchProgress({ done: completed, total: sampleQueries.length });
+            resolve();
+          };
+
+          const timer = setTimeout(() => {
+            safeResolve();
+          }, 5000);
+
           analyzeQuery(sq.sql, "postgresql", schemaDDL, (event) => {
             events.push(event);
             if (event.type === "complete") {
@@ -380,12 +395,14 @@ function ConnectPage() {
                 }
                 if (built.optimizedSql === sq.sql || !built.optimizedSql) unchangedCount++;
               }
-              completed++;
-              setBatchProgress({ done: completed, total: sampleQueries.length });
-              resolve();
+              safeResolve();
             }
-            if (event.type === "error") resolve();
-          }, () => resolve());
+            if (event.type === "error") {
+              safeResolve();
+            }
+          }, () => {
+            safeResolve();
+          });
         });
       } catch { /* skip failed */ }
     }
@@ -619,9 +636,9 @@ function ConnectPage() {
                     tables={schema.map((t) => ({
                       name: t.table,
                       columns: t.column_details?.map((c) => ({ name: c.name, type: c.type })) || [],
-                      indexes: [],
-                      primary_key: [],
-                      foreign_keys: [],
+                      indexes: t.index_details || [],
+                      primary_key: t.primary_key || [],
+                      foreign_keys: t.foreign_keys || [],
                     }))}
                     title="Live Database Schema (ERD)"
                   />
