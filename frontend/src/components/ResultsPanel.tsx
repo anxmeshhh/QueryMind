@@ -17,9 +17,9 @@ export interface IndexRec {
 export interface GuardReport {
   safe: boolean;
   safety_score: number;
-  warnings: string[];
-  blocked: string[];
-  approved: string[];
+  warnings: any[];
+  blocked: any[];
+  approved: any[];
   unchanged_note?: string;
 }
 
@@ -115,7 +115,7 @@ export function ResultsPanel({ result }: { result: AnalysisResult | null }) {
                 <div className="text-[10px] font-mono text-text-disabled uppercase tracking-wider">Blocked (duplicates)</div>
                 {guard.blocked.map((b, i) => (
                   <div key={i} className="bg-critical/8 border border-critical/15 rounded-md px-3 py-1.5 text-critical text-[11px] font-mono">
-                    {b}
+                    {typeof b === "object" ? b.message : b}
                   </div>
                 ))}
               </div>
@@ -125,7 +125,7 @@ export function ResultsPanel({ result }: { result: AnalysisResult | null }) {
                 <div className="text-[10px] font-mono text-text-disabled uppercase tracking-wider">Warnings</div>
                 {guard.warnings.map((w, i) => (
                   <div key={i} className="bg-warning/8 border border-warning/15 rounded-md px-3 py-1.5 text-warning text-[11px] font-mono">
-                    {w}
+                    {typeof w === "object" ? w.message : w}
                   </div>
                 ))}
               </div>
@@ -135,7 +135,7 @@ export function ResultsPanel({ result }: { result: AnalysisResult | null }) {
                 <div className="text-[10px] font-mono text-text-disabled uppercase tracking-wider">Approved</div>
                 {guard.approved.map((a, i) => (
                   <div key={i} className="bg-success/8 border border-success/15 rounded-md px-3 py-1.5 text-success text-[11px] font-mono">
-                    ✓ {a}
+                    ✓ {typeof a === "object" ? (a.sql || a.create_statement || JSON.stringify(a)) : a}
                   </div>
                 ))}
               </div>
