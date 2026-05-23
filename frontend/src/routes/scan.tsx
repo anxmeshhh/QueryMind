@@ -362,6 +362,10 @@ function ScanPage() {
     );
   };
 
+  useKeyboardShortcuts({
+    onRun: () => { if (!scanning) runScan(); }
+  });
+
   // Batch analysis using the new /analyze-batch endpoint with project context
   const batchAnalyzeQueries = () => {
     if (queries.length === 0) return;
