@@ -5,7 +5,7 @@
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 export interface SSEEvent {
-  type: "agent_start" | "agent_done" | "agent_error" | "agent_finding" | "complete" | "error";
+  type: "agent_start" | "agent_done" | "agent_error" | "agent_finding" | "complete" | "error" | "batch_start" | "batch_progress" | "batch_item_done" | "batch_item_error";
   agent?: string;
   message?: string;
   severity?: string;
@@ -123,6 +123,22 @@ export function explainQuery(
   );
 }
 
+/** Batch Analyze — POST /api/v1/analyze-batch */
+export function analyzeBatch(
+  queries: { sql: string; file: string; line: number }[],
+  projectSchema: any[],
+  dialect: string,
+  onEvent: (event: SSEEvent) => void,
+  onError?: (error: string) => void,
+) {
+  return streamAnalysis(
+    "/api/v1/analyze-batch",
+    { queries, project_schema: projectSchema, dialect: dialect.toLowerCase() },
+    onEvent,
+    onError,
+  );
+}
+
 /** Health check */
 export async function checkHealth(): Promise<boolean> {
   try {
@@ -132,3 +148,4 @@ export async function checkHealth(): Promise<boolean> {
     return false;
   }
 }
+

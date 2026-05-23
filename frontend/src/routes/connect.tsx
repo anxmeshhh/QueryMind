@@ -8,6 +8,8 @@ import { ResultsPanel } from "@/components/ResultsPanel";
 import { connectDatabase, explainQuery, type SSEEvent } from "@/lib/api";
 import { buildResultFromEvents } from "@/lib/mock-data";
 import type { SchemaTable, PlanNode, AnalysisResult } from "@/lib/mock-data";
+import { saveAnalysis } from "@/lib/history";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/connect")({
   head: () => ({
@@ -68,6 +70,45 @@ function ConnectPage() {
     } catch (e) {
       console.error("Failed to restore connection page state:", e);
     }
+  }, []);
+
+  // Listen for qm-restore-history event
+  useEffect(() => {
+    const handleRestore = (e: Event) => {
+      const analysis = (e as CustomEvent).detail;
+      if (analysis.mode === "connect") {
+        setQuery(analysis.original_query);
+        setConnected(true);
+        setExplained(true);
+        setConnInfo(`Restored Connection (${analysis.dialect.toUpperCase()})`);
+        if (analysis.schema_context) {
+          setSchema(analysis.schema_context);
+        }
+
+        // Structure logs
+        setLog([
+          { time: "0.0s", agent: "history", message: "Restoring connected database optimize run...", level: "info" },
+          { time: "0.1s", agent: "connector", message: `Connected to restored (${analysis.dialect}) schema.`, level: "success" }
+        ]);
+
+        const restoredResult: AnalysisResult = {
+          scoreBefore: analysis.performance_score_before || 50,
+          scoreAfter: analysis.performance_score_after || 90,
+          improvement: `${Math.round(((analysis.performance_score_after || 90) - (analysis.performance_score_before || 50)) / (analysis.performance_score_before || 50) * 100)}% speedup`,
+          issues: analysis.issues || [],
+          optimizedSql: analysis.optimized_query || "",
+          indexes: analysis.index_recommendations || [],
+        };
+        setResult(restoredResult);
+        setError(null);
+        toast.success("Workspace state restored from history");
+      } else {
+        toast.info(`Restore not supported on this view. Navigate to /${analysis.mode} first.`);
+      }
+    };
+
+    window.addEventListener("qm-restore-history", handleRestore);
+    return () => window.removeEventListener("qm-restore-history", handleRestore);
   }, []);
 
   // Save changes to persist workspace
@@ -226,7 +267,10 @@ function ConnectPage() {
 
         if (event.type === "complete") {
           const built = buildResultFromEvents(eventsRef.current);
-          if (built) setResult(built);
+          if (built) {
+            setResult(built);
+            saveAnalysis("connect", query, built, "postgresql", schema);
+          }
           setExplained(true);
           setExplaining(false);
         }

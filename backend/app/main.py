@@ -11,6 +11,7 @@ from app.agents.orchestrator import (
     run_scan_analysis,
     run_connect_test,
     run_explain_analysis,
+    run_batch_analysis,
 )
 
 
@@ -171,6 +172,49 @@ def create_app() -> Flask:
             def generate():
                 try:
                     for event in run_explain_analysis(conn_str, sql, dialect):
+                        yield event
+                except Exception as e:
+                    yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+            return Response(
+                generate(),
+                mimetype="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",
+                },
+            )
+
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        except Exception as e:
+            return jsonify({"error": f"Internal error: {str(e)}"}), 500
+
+    # ── Batch Analyze (SSE) ───────────────────────────────
+    @app.route("/api/v1/analyze-batch", methods=["POST"])
+    def analyze_batch():
+        """Batch analysis: analyze multiple queries with shared project context."""
+        try:
+            data = request.get_json()
+            if not data:
+                return jsonify({"error": "Request body required"}), 400
+
+            queries = data.get("queries", [])
+            if not queries:
+                return jsonify({"error": "No queries provided"}), 400
+            if len(queries) > 50:
+                return jsonify({"error": "Too many queries (max 50 per batch)"}), 400
+
+            project_schema = data.get("project_schema", [])
+            dialect = data.get("dialect", "postgresql")
+
+            if dialect not in ("postgresql", "mysql", "sqlite"):
+                return jsonify({"error": "Invalid dialect"}), 400
+
+            def generate():
+                try:
+                    for event in run_batch_analysis(queries, project_schema, dialect):
                         yield event
                 except Exception as e:
                     yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"

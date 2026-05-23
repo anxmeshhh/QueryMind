@@ -1,5 +1,4 @@
-@import "tailwindcss" source(none);
-@source "../src";
+@import "tailwindcss";
 @import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
@@ -128,11 +127,13 @@
 }
 
 @layer components {
+  /* Custom scrollbars */
   .qm-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
   .qm-scroll::-webkit-scrollbar-track { background: transparent; }
   .qm-scroll::-webkit-scrollbar-thumb { background: #27272a; border-radius: 4px; }
   .qm-scroll::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
 
+  /* Pulse dot for live indicators */
   .qm-pulse-dot {
     width: 6px; height: 6px; border-radius: 999px;
     background: var(--success);
@@ -144,6 +145,268 @@
     100% { box-shadow: 0 0 0 8px transparent; }
   }
 
+  /* Fade in micro-animation */
   .qm-fade-in { animation: qm-fade .25s ease both; }
-  @keyframes qm-fade { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes qm-fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* Slide up entrance */
+  .qm-slide-up { animation: qm-slide-up .4s cubic-bezier(.4,0,.2,1) both; }
+  @keyframes qm-slide-up { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* Staggered children — applies a slight cascading delay */
+  .qm-stagger > * { animation: qm-fade .35s ease both; }
+  .qm-stagger > *:nth-child(1) { animation-delay: 0ms; }
+  .qm-stagger > *:nth-child(2) { animation-delay: 60ms; }
+  .qm-stagger > *:nth-child(3) { animation-delay: 120ms; }
+  .qm-stagger > *:nth-child(4) { animation-delay: 180ms; }
+  .qm-stagger > *:nth-child(5) { animation-delay: 240ms; }
+
+  /* Glow accent for active elements */
+  .qm-glow {
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--primary) 25%, transparent),
+                0 0 20px color-mix(in oklab, var(--primary) 8%, transparent);
+  }
+
+  /* Shimmer loading skeleton */
+  .qm-shimmer {
+    background: linear-gradient(90deg, var(--elevated) 0%, #27272a 50%, var(--elevated) 100%);
+    background-size: 200% 100%;
+    animation: qm-shimmer 1.5s infinite;
+  }
+  @keyframes qm-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+  /* Subtle gradient overlay for hero sections */
+  .qm-hero-gradient {
+    background: radial-gradient(ellipse 60% 50% at 50% 0%, color-mix(in oklab, var(--primary) 6%, transparent) 0%, transparent 70%);
+  }
+
+  /* Navigation breadcrumb pipe */
+  .qm-nav-pipe::before {
+    content: "/";
+    margin: 0 6px;
+    color: var(--text-disabled);
+    font-size: 14px;
+  }
+
+  /* Card hover lift */
+  .qm-card-hover {
+    transition: border-color .2s, box-shadow .2s, transform .2s;
+  }
+  .qm-card-hover:hover {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--primary) 15%, transparent),
+                0 4px 24px color-mix(in oklab, var(--primary) 5%, transparent);
+    transform: translateY(-2px);
+  }
+
+  /* Stat card with top accent border */
+  .qm-stat-card {
+    position: relative;
+    overflow: hidden;
+  }
+  .qm-stat-card::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--primary), color-mix(in oklab, var(--primary) 30%, transparent));
+  }
+
+  /* ── Step Indicator ─────────────────────────────────── */
+  .qm-step {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .qm-step-badge {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 700;
+    border: 2px solid var(--border);
+    color: var(--text-disabled);
+    background: var(--elevated);
+    transition: all .3s ease;
+    flex-shrink: 0;
+  }
+  .qm-step-badge.active {
+    border-color: var(--primary);
+    color: var(--primary);
+    background: color-mix(in oklab, var(--primary) 10%, transparent);
+    box-shadow: 0 0 12px color-mix(in oklab, var(--primary) 15%, transparent);
+  }
+  .qm-step-badge.done {
+    border-color: var(--success);
+    color: var(--success);
+    background: color-mix(in oklab, var(--success) 10%, transparent);
+  }
+  .qm-step-connector {
+    width: 40px; height: 2px;
+    background: var(--border);
+    transition: background .3s ease;
+  }
+  .qm-step-connector.done {
+    background: var(--success);
+  }
+
+  /* ── File Tree ──────────────────────────────────────── */
+  .qm-file-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 5px 10px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-secondary);
+    border-radius: 4px;
+    cursor: default;
+    transition: background .15s;
+  }
+  .qm-file-item:hover { background: var(--elevated); }
+  .qm-lang-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  }
+  .qm-lang-py { background: #3572A5; }
+  .qm-lang-js { background: #f1e05a; }
+  .qm-lang-ts { background: #3178c6; }
+  .qm-lang-java { background: #b07219; }
+  .qm-lang-sql { background: #e38c00; }
+  .qm-lang-go { background: #00ADD8; }
+  .qm-lang-rb { background: #701516; }
+  .qm-lang-php { background: #4F5D95; }
+  .qm-lang-other { background: var(--text-disabled); }
+
+  /* ── Schema ERD Cards ───────────────────────────────── */
+  .qm-erd-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 12px;
+  }
+  .qm-schema-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    transition: border-color .2s, box-shadow .2s;
+  }
+  .qm-schema-card:hover {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--primary) 15%, transparent);
+  }
+  .qm-schema-card-header {
+    padding: 8px 12px;
+    background: var(--secondary);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    font-family: var(--font-mono);
+    font-size: 12px; font-weight: 700;
+    color: var(--primary);
+  }
+  .qm-schema-card-body {
+    padding: 6px 0;
+  }
+  .qm-schema-col {
+    display: flex; align-items: center; gap: 6px;
+    padding: 3px 12px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+  .qm-schema-col-pk { color: var(--warning); font-weight: 700; }
+  .qm-schema-col-fk { color: var(--info); }
+  .qm-schema-col-type {
+    margin-left: auto;
+    color: var(--text-disabled);
+    font-size: 10px;
+  }
+
+  /* ── Safety Badge ───────────────────────────────────── */
+  .qm-safety-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 8px; border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 11px; font-weight: 600;
+    border: 1px solid transparent;
+  }
+  .qm-safety-safe {
+    color: var(--success);
+    background: color-mix(in oklab, var(--success) 10%, transparent);
+    border-color: color-mix(in oklab, var(--success) 25%, transparent);
+  }
+  .qm-safety-warn {
+    color: var(--warning);
+    background: color-mix(in oklab, var(--warning) 10%, transparent);
+    border-color: color-mix(in oklab, var(--warning) 25%, transparent);
+  }
+  .qm-safety-danger {
+    color: var(--critical);
+    background: color-mix(in oklab, var(--critical) 10%, transparent);
+    border-color: color-mix(in oklab, var(--critical) 25%, transparent);
+  }
+
+  /* ── Gamification: XP Bar ──────────────────────────── */
+  .qm-xp-bar {
+    width: 100%; height: 6px;
+    background: var(--elevated);
+    border-radius: 3px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .qm-xp-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary), #a855f7);
+    border-radius: 3px;
+    transition: width .6s cubic-bezier(.4,0,.2,1);
+  }
+  .qm-badge-icon {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+    border: 2px solid var(--border);
+    background: var(--panel);
+    transition: all .3s;
+  }
+  .qm-badge-icon.earned {
+    border-color: var(--warning);
+    background: color-mix(in oklab, var(--warning) 10%, transparent);
+    box-shadow: 0 0 8px color-mix(in oklab, var(--warning) 20%, transparent);
+  }
+
+  /* ── Progress Ring ──────────────────────────────────── */
+  .qm-ring {
+    width: 56px; height: 56px;
+    position: relative;
+  }
+  .qm-ring svg {
+    transform: rotate(-90deg);
+  }
+  .qm-ring-track { stroke: var(--elevated); fill: none; stroke-width: 4; }
+  .qm-ring-fill {
+    fill: none; stroke-width: 4;
+    stroke-linecap: round;
+    transition: stroke-dashoffset .6s ease;
+  }
+  .qm-ring-label {
+    position: absolute;
+    inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 13px; font-weight: 700;
+  }
+
+  /* ── Language Bar (horizontal stacked) ──────────────── */
+  .qm-lang-bar {
+    display: flex;
+    height: 8px;
+    border-radius: 4px;
+    overflow: hidden;
+    background: var(--elevated);
+    border: 1px solid var(--border);
+  }
+  .qm-lang-bar > div {
+    height: 100%;
+    transition: width .4s ease;
+  }
 }
+

@@ -7,6 +7,8 @@ import { ActivityLog, type LogEntry } from "@/components/ActivityLog";
 import { ResultsPanel, type AnalysisResult } from "@/components/ResultsPanel";
 import { sampleQueries, buildResultFromEvents } from "@/lib/mock-data";
 import { analyzeQuery, type SSEEvent } from "@/lib/api";
+import { saveAnalysis } from "@/lib/history";
+import { toast } from "sonner";
 
 interface QuickSearch {
   q?: string;
@@ -80,6 +82,41 @@ function QuickPage() {
       }
     }
   }, [q]);
+
+  // Listen for qm-restore-history event
+  useEffect(() => {
+    const handleRestore = (e: Event) => {
+      const analysis = (e as CustomEvent).detail;
+      if (analysis.mode === "quick") {
+        setQuery(analysis.original_query);
+        setDialect(analysis.dialect === "mysql" ? "MySQL" : analysis.dialect === "sqlite" ? "SQLite" : "PostgreSQL");
+        
+        // Structure simulated logs
+        const restoredLogs: LogEntry[] = [
+          { time: "0.0s", agent: "history", message: "Restoring past optimization run...", level: "info" },
+          { time: "0.2s", agent: "history", message: `Found ${analysis.issues_count} issue(s) and ${analysis.index_recommendations?.length || 0} index suggestion(s).`, level: "success" }
+        ];
+        setLog(restoredLogs);
+
+        const restoredResult: AnalysisResult = {
+          scoreBefore: analysis.performance_score_before || 50,
+          scoreAfter: analysis.performance_score_after || 90,
+          improvement: `${Math.round(((analysis.performance_score_after || 90) - (analysis.performance_score_before || 50)) / (analysis.performance_score_before || 50) * 100)}% speedup`,
+          issues: analysis.issues || [],
+          optimizedSql: analysis.optimized_query || "",
+          indexes: analysis.index_recommendations || [],
+        };
+        setResult(restoredResult);
+        setError(null);
+        toast.success("Workspace state restored from history");
+      } else {
+        toast.info(`Restore not supported on this view. Navigate to /${analysis.mode} first.`);
+      }
+    };
+
+    window.addEventListener("qm-restore-history", handleRestore);
+    return () => window.removeEventListener("qm-restore-history", handleRestore);
+  }, []);
 
   // Persist workspace changes
   useEffect(() => {
@@ -161,7 +198,11 @@ function QuickPage() {
 
         if (event.type === "complete") {
           const built = buildResultFromEvents(eventsRef.current);
-          if (built) setResult(built);
+          if (built) {
+            setResult(built);
+            // Save analysis history to DB asynchronously
+            saveAnalysis("quick", sql, built, targetDialect, targetSchema);
+          }
           setRunning(false);
         }
 
