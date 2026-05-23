@@ -14,10 +14,14 @@ class Config:
     SECRET_KEY = os.getenv("SECRET_KEY", os.urandom(32).hex())
 
     # CORS
+    import re
     ALLOWED_ORIGINS = [
         o.strip()
         for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",")
     ]
+    if DEBUG:
+        ALLOWED_ORIGINS.append(re.compile(r"^https?://localhost(:\d+)?$"))
+        ALLOWED_ORIGINS.append(re.compile(r"^https?://127.0.0.1(:\d+)?$"))
 
     # Groq AI
     GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
