@@ -44,7 +44,7 @@ def natural_language_to_sql(
     user_prompt = f"Convert to SQL ({dialect}):\n\"{prompt}\"{schema_context}"
 
     try:
-        raw = ask_groq(user_prompt, system=system, max_tokens=512)
+        raw = ask_groq(user_prompt, system=system, max_tokens=512, json_mode=True)
         
         # Parse JSON from response
         raw = raw.strip()
