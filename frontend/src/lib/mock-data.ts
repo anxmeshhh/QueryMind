@@ -60,7 +60,7 @@ export function buildResultFromEvents(events: any[]): AnalysisResult | null {
   const completeEvent = events.find((e) => e.type === "complete" && e.result);
   if (!completeEvent?.result) return null;
 
-  const { issues, indexes, optimization, performance, guard } = completeEvent.result;
+  const { issues, indexes, optimization, performance, guard, plan } = completeEvent.result;
 
   return {
     scoreBefore: performance?.score_before ?? 50,
@@ -85,5 +85,6 @@ export function buildResultFromEvents(events: any[]): AnalysisResult | null {
       approved: guard.approved ?? [],
       unchanged_note: guard.unchanged_note,
     } : undefined,
+    plan: plan ?? performance?.plan ?? null,
   };
 }

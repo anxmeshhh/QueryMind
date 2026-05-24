@@ -3,6 +3,8 @@ import { Link, useMatches } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth";
 import { LogOut, Zap, FolderSearch, Database, Clock, Trophy, Flame, ChevronDown } from "lucide-react";
 import { HistoryDrawer } from "./HistoryDrawer";
+import { ThemeToggle } from "./ThemeToggle";
+import { CommandPaletteTrigger } from "./CommandPalette";
 import { type DBAnalysis } from "@/lib/history";
 
 const navItems = [
@@ -134,11 +136,14 @@ export function TopBar({
         </div>
 
         {/* Center */}
-        <div className="flex-1 flex justify-center">{center}</div>
+        <div className="flex-1 flex justify-center">
+          {center || <CommandPaletteTrigger />}
+        </div>
 
         {/* Right: gamification + user */}
         <div className="flex items-center gap-2">
           {right}
+          <ThemeToggle />
           {user && (
             <div className="flex items-center gap-2 border-l border-border pl-3 ml-1">
               {/* Level Badge */}

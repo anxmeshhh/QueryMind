@@ -149,13 +149,114 @@ def create_app() -> Flask:
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
+    # ── AI Chat (SSE) ────────────────────────────────────
+    @app.route("/api/v1/chat", methods=["POST"])
+    def ai_chat():
+        """Conversational AI assistant with schema context."""
+        try:
+            data = request.get_json()
+            if not data or "message" not in data:
+                return jsonify({"error": "message is required"}), 400
+
+            message = data["message"].strip()
+            if not message or len(message) > 5000:
+                return jsonify({"error": "Message must be 1-5000 characters"}), 400
+
+            session_id = data.get("session_id", "default")
+            schema = data.get("schema", [])
+            dialect = data.get("dialect", "postgresql")
+            current_query = data.get("current_query", "")
+            current_result = data.get("current_result", None)
+
+            from app.agents.ai_chat import chat_stream
+
+            def generate():
+                try:
+                    for event in chat_stream(
+                        session_id=session_id,
+                        message=message,
+                        schema=schema,
+                        dialect=dialect,
+                        current_query=current_query,
+                        current_result=current_result,
+                    ):
+                        yield event
+                except Exception as e:
+                    yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+            return Response(
+                generate(),
+                mimetype="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",
+                },
+            )
+
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/api/v1/chat/clear", methods=["POST"])
+    def clear_chat():
+        """Clear chat session history."""
+        try:
+            data = request.get_json()
+            session_id = data.get("session_id", "default") if data else "default"
+            from app.agents.ai_chat import clear_session
+            result = clear_session(session_id)
+            return jsonify(result)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    # ── Query Explainer ──────────────────────────────────
+    @app.route("/api/v1/explain-query", methods=["POST"])
+    def explain_query_endpoint():
+        """Explain a SQL query in plain English."""
+        try:
+            data = request.get_json()
+            if not data or "sql" not in data:
+                return jsonify({"error": "sql is required"}), 400
+
+            sql = data["sql"].strip()
+            if not sql or len(sql) > 50000:
+                return jsonify({"error": "SQL must be 1-50000 characters"}), 400
+
+            dialect = data.get("dialect", "postgresql")
+            schema = data.get("schema", [])
+
+            from app.agents.ai_explain import explain_query
+            result = explain_query(sql, dialect, schema)
+            return jsonify(result)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    # ── Query Comparison ─────────────────────────────────
+    @app.route("/api/v1/compare-queries", methods=["POST"])
+    def compare_queries_endpoint():
+        """Compare two SQL queries semantically."""
+        try:
+            data = request.get_json()
+            if not data or "sql_a" not in data or "sql_b" not in data:
+                return jsonify({"error": "sql_a and sql_b are required"}), 400
+
+            sql_a = data["sql_a"].strip()
+            sql_b = data["sql_b"].strip()
+            dialect = data.get("dialect", "postgresql")
+
+            from app.agents.ai_explain import compare_queries
+            result = compare_queries(sql_a, sql_b, dialect)
+            return jsonify(result)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
     # ── Health check ─────────────────────────────────────
     @app.route("/api/v1/health", methods=["GET"])
     def health():
         return jsonify({
             "status": "healthy",
             "service": "QueryMind API",
-            "version": Config.APP_VERSION if hasattr(Config, 'APP_VERSION') else "1.0.0",
+            "version": Config.APP_VERSION if hasattr(Config, 'APP_VERSION') else "2.0.0",
         })
 
     # ── Quick Analyze (SSE) ──────────────────────────────

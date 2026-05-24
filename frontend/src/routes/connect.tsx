@@ -7,6 +7,9 @@ import { ActivityLog, type LogEntry } from "@/components/ActivityLog";
 import { ResultsPanel } from "@/components/ResultsPanel";
 import { SchemaERD, type ERDTable } from "@/components/scan/SchemaERD";
 import { BatchDashboard, type AggregateImpact, type CodebaseOptimization } from "@/components/scan/BatchDashboard";
+import { MonacoEditor } from "@/components/MonacoEditor";
+import { CommandPalette } from "@/components/CommandPalette";
+import { AiChat, AiChatTrigger } from "@/components/AiChat";
 import { connectDatabase, explainQuery, analyzeQuery, type SSEEvent } from "@/lib/api";
 import { buildResultFromEvents } from "@/lib/mock-data";
 import type { SchemaTable, PlanNode, AnalysisResult } from "@/lib/mock-data";
@@ -54,6 +57,7 @@ function ConnectPage() {
   const [aggregate, setAggregate] = useState<AggregateImpact | null>(null);
   const [selectedOpt, setSelectedOpt] = useState<CodebaseOptimization | null>(null);
   const [activeTab, setActiveTab] = useState<"schema" | "query" | "dashboard">("schema");
+  const [chatOpen, setChatOpen] = useState(false);
   const queryInputRef = useRef<HTMLTextAreaElement>(null);
 
   // Keyboard shortcuts
@@ -61,6 +65,31 @@ function ConnectPage() {
     onRun: () => { if (connected && !explaining) handleExplain(); },
     onFocusInput: () => queryInputRef.current?.focus(),
   });
+
+  // Listen for SQL injection from chat
+  useEffect(() => {
+    const handleInject = (e: Event) => {
+      const sql = (e as CustomEvent).detail;
+      if (sql) {
+        setQuery(sql);
+        setActiveTab("query");
+      }
+    };
+    window.addEventListener("qm-inject-sql", handleInject);
+    return () => window.removeEventListener("qm-inject-sql", handleInject);
+  }, []);
+
+  // Listen for Ctrl+J / Cmd+J to toggle chat
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "j") {
+        e.preventDefault();
+        setChatOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   // Load connection state on mount (Workspace Persistence)
   useEffect(() => {
@@ -481,14 +510,17 @@ function ConnectPage() {
       <TopBar
         showBack
         right={
-          connected && (
-            <button
-              onClick={disconnectDatabase}
-              className="border border-border text-text-secondary hover:text-critical text-sm font-medium px-3 py-1.5 rounded-md hover:bg-elevated/40 transition-colors"
-            >
-              Disconnect
-            </button>
-          )
+          <div className="flex items-center gap-2">
+            <AiChatTrigger onClick={() => setChatOpen((prev) => !prev)} />
+            {connected && (
+              <button
+                onClick={disconnectDatabase}
+                className="border border-border text-text-secondary hover:text-critical text-sm font-medium px-3 py-1.5 rounded-md hover:bg-elevated/40 transition-colors"
+              >
+                Disconnect
+              </button>
+            )}
+          </div>
         }
       />
       <main className="flex-1 px-6 py-8 max-w-[1280px] mx-auto w-full space-y-6">
@@ -707,13 +739,14 @@ function ConnectPage() {
                       {explaining ? "Running..." : "Run EXPLAIN ANALYZE"}
                     </button>
                   </div>
-                  <textarea
-                    ref={queryInputRef}
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    spellCheck={false}
-                    className="w-full bg-code text-text-primary font-mono text-[13px] leading-6 px-4 py-3 outline-none resize-none min-h-[140px]"
-                  />
+                  <div className="relative min-h-[220px] w-full bg-code">
+                    <MonacoEditor
+                      value={query}
+                      onChange={setQuery}
+                      language="sql"
+                      schema={schema}
+                    />
+                  </div>
                 </div>
 
                 {explained && (
@@ -831,6 +864,22 @@ function ConnectPage() {
           </>
         )}
       </main>
+
+      {/* Command Palette */}
+      <CommandPalette
+        onRunAnalysis={() => { if (connected && !explaining) handleExplain(); }}
+        onClearWorkspace={disconnectDatabase}
+        onToggleChat={() => setChatOpen((prev) => !prev)}
+      />
+
+      {/* AI Chat Sliding Panel */}
+      <AiChat
+        isOpen={chatOpen}
+        onClose={() => setChatOpen(false)}
+        currentQuery={query}
+        dialect="postgresql"
+        currentResult={result}
+      />
     </div>
     </AuthGuard>
   );

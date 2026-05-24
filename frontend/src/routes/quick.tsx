@@ -1,11 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { Trash2, HelpCircle, Database, MessageSquare, Sparkles } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
 import { SectionHeader } from "@/components/SectionHeader";
 import { AuthGuard } from "@/components/AuthGuard";
 import { ActivityLog, type LogEntry } from "@/components/ActivityLog";
 import { ResultsPanel, type AnalysisResult } from "@/components/ResultsPanel";
+import { MonacoEditor } from "@/components/MonacoEditor";
+import { CommandPalette } from "@/components/CommandPalette";
+import { AiChat, AiChatTrigger } from "@/components/AiChat";
 import { sampleQueries, buildResultFromEvents } from "@/lib/mock-data";
 import { analyzeQuery, nlToSql, type SSEEvent } from "@/lib/api";
 import { saveAnalysis } from "@/lib/history";
@@ -57,10 +60,48 @@ function QuickPage() {
   const [error, setError] = useState<string | null>(null);
   const [nlPrompt, setNlPrompt] = useState("");
   const [nlLoading, setNlLoading] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   
   const abortRef = useRef<AbortController | null>(null);
   const eventsRef = useRef<SSEEvent[]>([]);
   const [hasGlobalSchema, setHasGlobalSchema] = useState(false);
+
+  // Listen for SQL injection from chat
+  useEffect(() => {
+    const handleInject = (e: Event) => {
+      const sql = (e as CustomEvent).detail;
+      if (sql) {
+        setQuery(sql);
+        setTab("query");
+      }
+    };
+    window.addEventListener("qm-inject-sql", handleInject);
+    return () => window.removeEventListener("qm-inject-sql", handleInject);
+  }, []);
+
+  // Listen for Ctrl+J / Cmd+J to toggle chat
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "j") {
+        e.preventDefault();
+        setChatOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  // Parse schema context for Monaco autocomplete
+  const editorSchema = useMemo(() => {
+    try {
+      const globalSchema = localStorage.getItem("qm_global_schema");
+      if (globalSchema) {
+        const tables = JSON.parse(globalSchema);
+        if (Array.isArray(tables)) return tables;
+      }
+    } catch {}
+    return [];
+  }, [hasGlobalSchema]);
 
   // Load state on mount (restoring from search parameter or localStorage)
   useEffect(() => {
@@ -293,6 +334,7 @@ function QuickPage() {
 
   const right = (
     <div className="flex items-center gap-2">
+      <AiChatTrigger onClick={() => setChatOpen((prev) => !prev)} />
       {(query.trim() || schema.trim() || result) && (
         <button
           onClick={clearQuickWorkspace}
@@ -341,17 +383,20 @@ function QuickPage() {
                 </span>
               </TabBtn>
             </div>
-            <div className="flex-1 relative bg-code">
+            <div className="flex-1 relative bg-code min-h-0">
               {tab === "query" ? (
-                <CodeEditor
+                <MonacoEditor
                   value={query}
                   onChange={setQuery}
+                  language="sql"
                   placeholder={DEFAULT_QUERY}
+                  schema={editorSchema}
                 />
               ) : tab === "schema" ? (
-                <CodeEditor
+                <MonacoEditor
                   value={schema}
                   onChange={setSchema}
+                  language="sql"
                   placeholder={DEFAULT_SCHEMA}
                 />
               ) : (
@@ -403,6 +448,22 @@ function QuickPage() {
             <ResultsPanel result={result} originalSql={query} />
           </section>
         </div>
+
+        {/* Command Palette */}
+        <CommandPalette
+          onRunAnalysis={() => { if (!running) runAnalysis(); }}
+          onClearWorkspace={clearQuickWorkspace}
+          onToggleChat={() => setChatOpen((prev) => !prev)}
+        />
+
+        {/* AI Chat Sliding Panel */}
+        <AiChat
+          isOpen={chatOpen}
+          onClose={() => setChatOpen(false)}
+          currentQuery={query}
+          dialect={dialect.toLowerCase()}
+          currentResult={result}
+        />
       </div>
     </AuthGuard>
   );
@@ -441,6 +502,7 @@ function CodeEditor({
   onChange: (v: string) => void;
   placeholder: string;
 }) {
+  // Legacy fallback — MonacoEditor is now preferred
   const lines = (value || placeholder).split("\n");
   return (
     <div className="absolute inset-0 flex overflow-auto qm-scroll">

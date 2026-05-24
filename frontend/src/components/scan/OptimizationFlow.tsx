@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect } from "react";
-import { Zap, AlertTriangle, ArrowRight, ShieldCheck, Database, FileCode } from "lucide-react";
+import { Zap, AlertTriangle, ArrowRight, ShieldCheck, Database, FileCode, ZoomIn, ZoomOut } from "lucide-react";
 
 interface OptimizationFlowProps {
   originalSql: string;
@@ -32,6 +32,7 @@ interface FlowEdge {
 
 export function OptimizationFlow({ originalSql, optimizedSql, issues, indexes }: OptimizationFlowProps) {
   const [activeView, setActiveView] = useState<"side-by-side" | "before" | "after">("side-by-side");
+  const [zoom, setZoom] = useState(1.0);
   const [beforeNodes, setBeforeNodes] = useState<FlowNode[]>([]);
   const [beforeEdges, setBeforeEdges] = useState<FlowEdge[]>([]);
   const [afterNodes, setAfterNodes] = useState<FlowNode[]>([]);
@@ -188,11 +189,42 @@ export function OptimizationFlow({ originalSql, optimizedSql, issues, indexes }:
 
   return (
     <div className="bg-panel border border-border rounded-lg overflow-hidden flex flex-col qm-fade-in mb-6">
-      <div className="h-10 px-4 flex items-center justify-between border-b border-border bg-panel shrink-0">
+      <div className="min-h-10 py-1.5 px-4 flex flex-wrap items-center justify-between gap-2 border-b border-border bg-panel shrink-0">
         <div className="flex items-center gap-2">
           <Zap size={13} className="text-primary animate-pulse" />
           <span className="section-label">N8N Interactive Join-Flow Plan Analyzer</span>
         </div>
+        
+        {/* Zoom Slider Controls */}
+        <div className="flex items-center gap-1.5 bg-elevated/40 border border-border px-2 py-0.5 rounded-md">
+          <button
+            onClick={() => setZoom((prev) => Math.max(prev - 0.1, 0.5))}
+            className="text-text-muted hover:text-text-primary p-1 transition-colors"
+            title="Zoom Out"
+          >
+            <ZoomOut size={12} />
+          </button>
+          <input
+            type="range"
+            min="0.5"
+            max="1.5"
+            step="0.05"
+            value={zoom}
+            onChange={(e) => setZoom(parseFloat(e.target.value))}
+            className="w-16 md:w-20 h-1 bg-border rounded-lg appearance-none cursor-pointer accent-primary focus:outline-none"
+          />
+          <button
+            onClick={() => setZoom((prev) => Math.min(prev + 0.1, 1.5))}
+            className="text-text-muted hover:text-text-primary p-1 transition-colors"
+            title="Zoom In"
+          >
+            <ZoomIn size={12} />
+          </button>
+          <span className="text-[10px] font-mono text-text-muted border-l border-border pl-1.5 min-w-[34px] text-right">
+            {Math.round(zoom * 100)}%
+          </span>
+        </div>
+
         <div className="flex bg-elevated/40 border border-border p-0.5 rounded-md gap-0.5">
           {(["side-by-side", "before", "after"] as const).map((view) => (
             <button
@@ -213,15 +245,15 @@ export function OptimizationFlow({ originalSql, optimizedSql, issues, indexes }:
       <div className="p-4 overflow-hidden">
         {activeView === "side-by-side" && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <FlowCanvas title="BEFORE OPTIMIZATION" nodes={beforeNodes} edges={beforeEdges} mode="before" />
-            <FlowCanvas title="AFTER OPTIMIZATION" nodes={afterNodes} edges={afterEdges} mode="after" />
+            <FlowCanvas title="BEFORE OPTIMIZATION" nodes={beforeNodes} edges={beforeEdges} mode="before" zoom={zoom} />
+            <FlowCanvas title="AFTER OPTIMIZATION" nodes={afterNodes} edges={afterEdges} mode="after" zoom={zoom} />
           </div>
         )}
         {activeView === "before" && (
-          <FlowCanvas title="BEFORE OPTIMIZATION" nodes={beforeNodes} edges={beforeEdges} mode="before" />
+          <FlowCanvas title="BEFORE OPTIMIZATION" nodes={beforeNodes} edges={beforeEdges} mode="before" zoom={zoom} />
         )}
         {activeView === "after" && (
-          <FlowCanvas title="AFTER OPTIMIZATION" nodes={afterNodes} edges={afterEdges} mode="after" />
+          <FlowCanvas title="AFTER OPTIMIZATION" nodes={afterNodes} edges={afterEdges} mode="after" zoom={zoom} />
         )}
       </div>
     </div>
@@ -233,15 +265,25 @@ function FlowCanvas({
   nodes,
   edges,
   mode,
+  zoom,
 }: {
   title: string;
   nodes: FlowNode[];
   edges: FlowEdge[];
   mode: "before" | "after";
+  zoom: number;
 }) {
+  const [showScrollArrow, setShowScrollArrow] = useState(true);
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.currentTarget;
+    const isAtEnd = target.scrollLeft + target.clientWidth >= target.scrollWidth - 30;
+    setShowScrollArrow(!isAtEnd);
+  };
+
   return (
-    <div className="border border-border rounded-lg bg-code overflow-hidden flex flex-col">
-      <div className="h-8 px-3 border-b border-border bg-panel flex items-center justify-between shrink-0">
+    <div className="border border-border rounded-lg bg-code overflow-hidden flex flex-col relative">
+      <div className="min-h-8 py-1.5 px-3 border-b border-border bg-panel flex flex-wrap items-center justify-between gap-2 shrink-0">
         <span className="text-[11px] font-mono font-bold text-text-secondary tracking-wider flex items-center gap-1.5">
           {mode === "before" ? (
             <AlertTriangle size={11} className="text-critical shrink-0" />
@@ -256,123 +298,142 @@ function FlowCanvas({
           {mode === "before" ? "HEAVY PATH" : "OPTIMIZED PATH"}
         </span>
       </div>
-      <div
-        className="relative h-[280px] w-full select-none overflow-hidden"
-        style={{
-          backgroundImage: "radial-gradient(var(--border) 1px, transparent 1px)",
-          backgroundSize: "16px 16px",
-        }}
-      >
-        {/* Draw bezier connectors between nodes */}
-        <svg className="absolute inset-0 w-full h-full pointer-events-none">
-          <defs>
-            <marker
-              id={`arrow-${mode}`}
-              viewBox="0 0 10 10"
-              refX="6"
-              refY="5"
-              markerWidth="6"
-              markerHeight="6"
-              orient="auto-start-reverse"
-            >
-              <path
-                d="M 0 2 L 10 5 L 0 8 z"
-                fill={mode === "before" ? "var(--critical)" : "var(--success)"}
-              />
-            </marker>
-          </defs>
-          {edges.map((edge, i) => {
-            const fromNode = nodes.find((n) => n.id === edge.from);
-            const toNode = nodes.find((n) => n.id === edge.to);
-            if (!fromNode || !toNode) return null;
+      <div className="relative flex-1 min-h-0">
+        <div
+          onScroll={handleScroll}
+          className="relative h-[360px] w-full select-none overflow-x-auto overflow-y-hidden qm-scroll scrollbar-thin"
+          style={{
+            backgroundImage: "radial-gradient(var(--border) 1px, transparent 1px)",
+            backgroundSize: "16px 16px",
+          }}
+        >
+          <div
+            className="absolute inset-y-0 left-0 origin-top-left transition-transform duration-75"
+            style={{
+              transform: `scale(${zoom})`,
+              width: "550px",
+              minWidth: "550px",
+            }}
+          >
+          {/* Draw bezier connectors between nodes */}
+          <svg className="absolute inset-0 w-full h-full pointer-events-none">
+            <defs>
+              <marker
+                id={`arrow-${mode}`}
+                viewBox="0 0 10 10"
+                refX="6"
+                refY="5"
+                markerWidth="6"
+                markerHeight="6"
+                orient="auto-start-reverse"
+              >
+                <path
+                  d="M 0 2 L 10 5 L 0 8 z"
+                  fill={mode === "before" ? "var(--critical)" : "var(--success)"}
+                />
+              </marker>
+            </defs>
+            {edges.map((edge, i) => {
+              const fromNode = nodes.find((n) => n.id === edge.from);
+              const toNode = nodes.find((n) => n.id === edge.to);
+              if (!fromNode || !toNode) return null;
 
-            // Calculate anchor coordinates
-            const fromX = fromNode.x + (fromNode.type === "table" ? 140 : 120);
-            const fromY = fromNode.y + (fromNode.type === "table" ? 35 : 20);
-            const toX = toNode.x;
-            const toY = toNode.y + 20;
+              // Calculate anchor coordinates
+              const fromX = fromNode.x + (fromNode.type === "table" ? 140 : 120);
+              const fromY = fromNode.y + (fromNode.type === "table" ? 35 : 20);
+              const toX = toNode.x;
+              const toY = toNode.y + 20;
 
-            // Draw clean horizontal cubic bezier path
-            const controlPointOffset = Math.abs(toX - fromX) * 0.4;
-            const pathData = `M ${fromX} ${fromY} C ${fromX + controlPointOffset} ${fromY}, ${toX - controlPointOffset} ${toY}, ${toX} ${toY}`;
+              // Draw clean horizontal cubic bezier path
+              const controlPointOffset = Math.abs(toX - fromX) * 0.4;
+              const pathData = `M ${fromX} ${fromY} C ${fromX + controlPointOffset} ${fromY}, ${toX - controlPointOffset} ${toY}, ${toX} ${toY}`;
 
+              return (
+                <g key={i}>
+                  <path
+                    d={pathData}
+                    fill="none"
+                    stroke={mode === "before" ? "rgba(239, 68, 68, 0.15)" : "rgba(34, 197, 94, 0.15)"}
+                    strokeWidth="6"
+                  />
+                  <path
+                    d={pathData}
+                    fill="none"
+                    stroke={mode === "before" ? "var(--critical)" : "var(--success)"}
+                    strokeWidth="1.5"
+                    strokeDasharray="4 4"
+                    className="qm-flow-line"
+                    markerEnd={`url(#arrow-${mode})`}
+                  />
+                </g>
+              );
+            })}
+          </svg>
+
+          {/* Render node components */}
+          {nodes.map((node) => {
+            const isTable = node.type === "table";
             return (
-              <g key={i}>
-                <path
-                  d={pathData}
-                  fill="none"
-                  stroke={mode === "before" ? "rgba(239, 68, 68, 0.15)" : "rgba(34, 197, 94, 0.15)"}
-                  strokeWidth="6"
-                />
-                <path
-                  d={pathData}
-                  fill="none"
-                  stroke={mode === "before" ? "var(--critical)" : "var(--success)"}
-                  strokeWidth="1.5"
-                  strokeDasharray="4 4"
-                  className="qm-flow-line"
-                  markerEnd={`url(#arrow-${mode})`}
-                />
-              </g>
-            );
-          })}
-        </svg>
-
-        {/* Render node components */}
-        {nodes.map((node) => {
-          const isTable = node.type === "table";
-          return (
-            <div
-              key={node.id}
-              className={`absolute rounded-md shadow-sm border text-[11px] font-mono transition-all hover:shadow-md ${
-                node.type === "table" ? "w-[140px]" : "w-[120px]"
-              } ${
-                node.status === "critical" ? "bg-panel border-critical/50 text-critical shadow-critical/5" :
-                node.status === "success" ? "bg-panel border-success/50 text-success shadow-success/5" :
-                node.status === "warning" ? "bg-panel border-warning/50 text-warning shadow-warning/5" :
-                "bg-panel border-border text-text-primary"
-              }`}
-              style={{ left: `${node.x}px`, top: `${node.y}px` }}
-            >
-              {/* Header */}
-              <div className={`px-2 py-1 flex items-center justify-between border-b font-bold text-[10px] rounded-t-md ${
-                node.status === "critical" ? "bg-critical/5 border-critical/20 text-critical" :
-                node.status === "success" ? "bg-success/5 border-success/20 text-success" :
-                node.status === "warning" ? "bg-warning/5 border-warning/20 text-warning" :
-                "bg-secondary/40 border-border text-text-secondary"
-              }`}>
-                <span className="truncate flex items-center gap-1">
-                  {isTable ? <Database size={10} /> : <FileCode size={10} />}
-                  {node.label.split("\n")[0]}
-                </span>
-                {/* Socket Output Dot */}
-                <div className={`w-1.5 h-1.5 rounded-full absolute -right-1 top-[20px] border border-panel shrink-0 ${
-                  mode === "before" ? "bg-critical" : "bg-success"
-                }`} />
-                {/* Socket Input Dot */}
-                {node.type !== "table" && (
-                  <div className={`w-1.5 h-1.5 rounded-full absolute -left-1 top-[20px] border border-panel shrink-0 ${
+              <div
+                key={node.id}
+                className={`absolute rounded-md shadow-sm border text-[11px] font-mono transition-all hover:shadow-md ${
+                  node.type === "table" ? "w-[140px]" : "w-[120px]"
+                } ${
+                  node.status === "critical" ? "bg-panel border-critical/50 text-critical shadow-critical/5" :
+                  node.status === "success" ? "bg-panel border-success/50 text-success shadow-success/5" :
+                  node.status === "warning" ? "bg-panel border-warning/50 text-warning shadow-warning/5" :
+                  "bg-panel border-border text-text-primary"
+                }`}
+                style={{ left: `${node.x}px`, top: `${node.y}px` }}
+              >
+                {/* Header */}
+                <div className={`px-2 py-1 flex items-center justify-between border-b font-bold text-[10px] rounded-t-md ${
+                  node.status === "critical" ? "bg-critical/5 border-critical/20 text-critical" :
+                  node.status === "success" ? "bg-success/5 border-success/20 text-success" :
+                  node.status === "warning" ? "bg-warning/5 border-warning/20 text-warning" :
+                  "bg-secondary/40 border-border text-text-secondary"
+                }`}>
+                  <span className="truncate flex items-center gap-1">
+                    {isTable ? <Database size={10} /> : <FileCode size={10} />}
+                    {node.label.split("\n")[0]}
+                  </span>
+                  {/* Socket Output Dot */}
+                  <div className={`w-1.5 h-1.5 rounded-full absolute -right-1 top-[20px] border border-panel shrink-0 ${
                     mode === "before" ? "bg-critical" : "bg-success"
                   }`} />
-                )}
-              </div>
-              {/* Body */}
-              <div className="p-1.5 space-y-0.5 leading-tight select-none">
-                {isTable && node.columns ? (
-                  node.columns.map((c, idx) => (
-                    <div key={idx} className="flex justify-between items-center text-[9px] text-text-muted px-0.5">
-                      <span>• {c}</span>
+                  {/* Socket Input Dot */}
+                  {node.type !== "table" && (
+                    <div className={`w-1.5 h-1.5 rounded-full absolute -left-1 top-[20px] border border-panel shrink-0 ${
+                      mode === "before" ? "bg-critical" : "bg-success"
+                    }`} />
+                  )}
+                </div>
+                {/* Body */}
+                <div className="p-1.5 space-y-0.5 leading-tight select-none">
+                  {isTable && node.columns ? (
+                    node.columns.map((c, idx) => (
+                      <div key={idx} className="flex justify-between items-center text-[9px] text-text-muted px-0.5">
+                        <span>• {c}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-[9.5px] text-text-secondary whitespace-pre-line text-center py-1">
+                      {node.label.includes("\n") ? node.label.split("\n").slice(1).join("\n") : node.label}
                     </div>
-                  ))
-                ) : (
-                  <div className="text-[9.5px] text-text-secondary whitespace-pre-line text-center py-1">
-                    {node.label.includes("\n") ? node.label.split("\n").slice(1).join("\n") : node.label}
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+          </div>
+        </div>
+
+        {showScrollArrow && (
+          <div className="absolute right-4 top-1/2 -translate-y-1/2 z-20 pointer-events-none bg-panel/95 backdrop-blur border border-primary/45 py-2 px-3 rounded-full shadow-lg text-primary flex items-center gap-1.5 text-[11px] font-mono animate-pulse">
+            <span>Scroll</span>
+            <ArrowRight size={13} className="animate-bounce" />
+          </div>
+        )}
       </div>
     </div>
   );
