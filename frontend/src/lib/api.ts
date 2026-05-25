@@ -110,18 +110,24 @@ function streamLocalBridge(
   dialect: string,
   onEvent: (event: SSEEvent) => void,
   onError?: (error: string) => void,
+  bridgeToken?: string,
 ): AbortController {
   const controller = new AbortController();
 
   setTimeout(async () => {
     try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (bridgeToken) {
+        headers["Authorization"] = `Bearer ${bridgeToken}`;
+      }
+
       if (action === "schema") {
         onEvent({ type: "agent_start", agent: "connector", message: "Connecting to local QueryMind Bridge (port 9999)...", time: 0.1 });
         
         // Test connection
         const testRes = await fetch("http://localhost:9999", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify({ action: "test", connection_string: connectionString }),
           signal: controller.signal,
         });
@@ -143,7 +149,7 @@ function streamLocalBridge(
         onEvent({ type: "agent_start", agent: "schema", message: "Extracting table schemas locally...", time: 0.5 });
         const schemaRes = await fetch("http://localhost:9999", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify({ action: "schema", connection_string: connectionString }),
           signal: controller.signal,
         });
@@ -161,7 +167,7 @@ function streamLocalBridge(
         // Run Explain
         const explainRes = await fetch("http://localhost:9999", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify({ action: "explain", connection_string: connectionString, query: sql }),
           signal: controller.signal,
         });
@@ -239,9 +245,10 @@ export function connectDatabase(
   connectionString: string,
   onEvent: (event: SSEEvent) => void,
   onError?: (error: string) => void,
+  bridgeToken?: string,
 ) {
   if (connectionString.includes("localhost") || connectionString.includes("127.0.0.1")) {
-    return streamLocalBridge("schema", connectionString, "", "postgresql", onEvent, onError);
+    return streamLocalBridge("schema", connectionString, "", "postgresql", onEvent, onError, bridgeToken);
   }
   return streamAnalysis("/api/v1/connect", { connection_string: connectionString }, onEvent, onError);
 }
@@ -253,9 +260,10 @@ export function explainQuery(
   dialect: string,
   onEvent: (event: SSEEvent) => void,
   onError?: (error: string) => void,
+  bridgeToken?: string,
 ) {
   if (connectionString.includes("localhost") || connectionString.includes("127.0.0.1")) {
-    return streamLocalBridge("explain", connectionString, sql, dialect, onEvent, onError);
+    return streamLocalBridge("explain", connectionString, sql, dialect, onEvent, onError, bridgeToken);
   }
   return streamAnalysis(
     "/api/v1/explain",

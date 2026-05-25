@@ -34,15 +34,35 @@ class BridgeHandler(BaseHTTPRequestHandler):
         # Suppress default server logs for cleaner output
         pass
 
+    def _check_auth(self):
+        auth_header = self.headers.get("Authorization")
+        if not auth_header or not auth_header.startswith("Bearer "):
+            return False
+        token = auth_header.split(" ")[1]
+        return token == self.server.token
+
+    def _send_cors_headers(self):
+        origin = self.headers.get("Origin", "*")
+        self.send_header("Access-Control-Allow-Origin", origin)
+        self.send_header("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
     def do_OPTIONS(self):
         # Handle CORS preflight request
         self.send_response(200)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self._send_cors_headers()
         self.end_headers()
 
     def do_POST(self):
+        # Authenticate request
+        if not self._check_auth():
+            self.send_response(401)
+            self._send_cors_headers()
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"status": "error", "message": "Unauthorized. Invalid or missing bridge token."}).encode("utf-8"))
+            return
+
         # Parse request body
         content_length = int(self.headers.get("Content-Length", 0))
         post_data = self.rfile.read(content_length)
@@ -63,7 +83,7 @@ class BridgeHandler(BaseHTTPRequestHandler):
             res = {"status": "error", "message": f"Bridge error: {str(e)}"}
 
         self.send_response(200)
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self._send_cors_headers()
         self.send_header("Content-Type", "application/json")
         self.end_headers()
         self.wfile.write(json.dumps(res).encode("utf-8"))
@@ -241,10 +261,26 @@ class BridgeHandler(BaseHTTPRequestHandler):
             return {"status": "error", "message": str(e)}
 
 
-def run_bridge_server(port, db_url):
+def run_bridge_server(port, db_url, token=None):
+    import secrets
+    
+    # Auto-generate a secure token if not supplied
+    if not token:
+        token = secrets.token_hex(8)  # e.g., '3f1a6c4b2e8d9f0c'
+
     server = HTTPServer(("127.0.0.1", port), BridgeHandler)
     server.db_url = db_url
-    print(f"\n[+] QueryMind Secure Bridge running locally at: http://localhost:{port}")
+    server.token = token
+
+    print(f"\n=======================================================")
+    print(f"🚀 QUERYMIND SECURE BRIDGE ACTIVE")
+    print(f"=======================================================")
+    print(f"[+] Listening on: http://localhost:{port}")
+    print(f"[🔑] Your Security Token:")
+    print(f"     {token}")
+    print(f"=======================================================")
+    print(f"Paste this token in your browser's connection window to authenticate.")
+    print(f"=======================================================\n")
     print("[*] Waiting for browser connections...")
     
     try:
@@ -258,6 +294,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="QueryMind Secure Local Database Bridge")
     parser.add_argument("--db", default=None, help="Optional default Local Database URL")
     parser.add_argument("--port", type=int, default=9999, help="Local HTTP port to run bridge server")
+    parser.add_argument("--token", default=None, help="Secure token to authenticate connection (auto-generated if omitted)")
     args = parser.parse_args()
 
-    run_bridge_server(args.port, args.db)
+    run_bridge_server(args.port, args.db, args.token)

@@ -35,7 +35,20 @@ const templates: Record<string, string> = {
 
 function ConnectPage() {
   const [url, setUrl] = useState("");
+  const [bridgeToken, setBridgeToken] = useState(() => {
+    try {
+      return localStorage.getItem("qm_bridge_token") || "";
+    } catch {
+      return "";
+    }
+  });
   const [connecting, setConnecting] = useState(false);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("qm_bridge_token", bridgeToken);
+    } catch {}
+  }, [bridgeToken]);
   const [connected, setConnected] = useState(false);
   const [connInfo, setConnInfo] = useState<string | null>(null);
   const [schema, setSchema] = useState<SchemaTable[]>([]);
@@ -280,6 +293,7 @@ function ConnectPage() {
         setError(errMsg);
         setConnecting(false);
       },
+      bridgeToken
     );
   };
 
@@ -357,6 +371,7 @@ function ConnectPage() {
         setError(errMsg);
         setExplaining(false);
       },
+      bridgeToken
     );
   };
 
@@ -538,6 +553,21 @@ function ConnectPage() {
             placeholder="postgresql://user:password@localhost:5432/mydb"
             className="mt-4 w-full bg-code border border-border rounded-md px-3 py-2.5 font-mono text-[13px] text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-primary"
           />
+
+          {(url.includes("localhost") || url.includes("127.0.0.1")) && (
+            <div className="mt-3">
+              <label className="block text-[11px] font-mono text-text-muted mb-1">
+                BRIDGE ACCESS TOKEN (Printed by querymind_bridge.py)
+              </label>
+              <input
+                type="password"
+                value={bridgeToken}
+                onChange={(e) => setBridgeToken(e.target.value)}
+                placeholder="Paste bridge token here..."
+                className="w-full bg-code border border-border rounded-md px-3 py-2.5 font-mono text-[13px] text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-primary"
+              />
+            </div>
+          )}
 
           <div className="mt-2 flex items-center gap-4 text-[12px] font-mono text-text-disabled">
             {Object.entries(templates).map(([name, tpl]) => (
