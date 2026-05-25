@@ -408,14 +408,44 @@ Run `backend/migrations.sql` in your Supabase SQL Editor (Dashboard → SQL Edit
 - `analytics` — insert-only telemetry for aggregate metrics
 - `user_profiles` — gamification data (XP, level, badges)
 
-### 5. Deploy to Cloudflare (Optional)
+### 5. Deploy to Cloudflare & Production
 
-The frontend is pre-configured for Cloudflare Workers:
+QueryMind is designed with a modern, decoupled production architecture optimized for edge networks:
 
-```bash
-cd frontend
-npx wrangler deploy
-```
+#### Production Deployment Tech Stack
+
+* **Frontend Hosting (Edge CDN):**
+  * **Platform:** [Cloudflare Pages](https://pages.cloudflare.com/) / [Cloudflare Workers](https://workers.cloudflare.com/)
+  * **Build System:** Bun (v1.2.15+) or Node.js (via npm)
+  * **Framework Target:** Vite + TanStack Start compiles down to a Cloudflare Workers target (`src/server.ts` entry point), leveraging Edge SSR.
+  * **Assets:** Served directly from Cloudflare's global edge cache.
+
+* **Backend Hosting (Application Server):**
+  * **Platform:** [Render](https://render.com/) (Web Service) or AWS EC2
+  * **WSGI Server:** `gunicorn app.main:app --bind 0.0.0.0:5000 --workers 4`
+  * **Runtime:** Python 3.11+ (Gunicorn master-worker model manages concurrent query analysis streams).
+  * **SSE Streaming Support:** Configured to prevent response buffering so agent logs stream in real-time.
+
+* **Database & Auth (Backend-as-a-Service):**
+  * **Platform:** [Supabase](https://supabase.com/) (Managed PostgreSQL)
+  * **Auth Flow:** Supabase Gotrue JWT auth with support for GitHub/Google OAuth + transactional OTP emails via SMTP.
+  * **Data Access Security:** Row-Level Security (RLS) policies guard all user workspace entries.
+
+#### Deployment Commands
+
+* **Deploy Frontend (Cloudflare):**
+  ```bash
+  cd frontend
+  # Uses settings defined in wrangler.jsonc
+  npx wrangler deploy
+  ```
+  *(Remember to set `BUN_VERSION` = `1.3.14` and `VITE_API_URL` in Cloudflare Variables settings if deploying using Bun).*
+
+* **Deploy Backend (Render/Server):**
+  Ensure the environment variables from `.env.example` are set in your platform dashboard, then run:
+  ```bash
+  gunicorn app.main:app --bind 0.0.0.0:$PORT --workers 4 --timeout 120
+  ```
 
 ---
 
