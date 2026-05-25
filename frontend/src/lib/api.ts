@@ -102,12 +102,147 @@ export function scanFiles(
   return streamAnalysis("/api/v1/scan", { files }, onEvent, onError);
 }
 
+/** Helper to execute queries/discoveries directly on the client machine via QueryMind Local Bridge */
+function streamLocalBridge(
+  action: "schema" | "explain",
+  connectionString: string,
+  sql: string,
+  dialect: string,
+  onEvent: (event: SSEEvent) => void,
+  onError?: (error: string) => void,
+): AbortController {
+  const controller = new AbortController();
+
+  setTimeout(async () => {
+    try {
+      if (action === "schema") {
+        onEvent({ type: "agent_start", agent: "connector", message: "Connecting to local QueryMind Bridge (port 9999)...", time: 0.1 });
+        
+        // Test connection
+        const testRes = await fetch("http://localhost:9999", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "test", connection_string: connectionString }),
+          signal: controller.signal,
+        });
+        const testData = await testRes.json();
+        if (testData.status === "error") {
+          onEvent({ type: "agent_error", agent: "connector", message: testData.message });
+          return;
+        }
+
+        const dbType = connectionString.toLowerCase().includes("mysql") ? "MySQL" : connectionString.toLowerCase().includes("sqlite") ? "SQLite" : "PostgreSQL";
+        onEvent({
+          type: "agent_done",
+          agent: "connector",
+          message: "Successfully connected locally.",
+          data: { type: dbType, version: "Local Instance", database: connectionString.split("/").pop() || "local" },
+        });
+
+        // Get Schema
+        onEvent({ type: "agent_start", agent: "schema", message: "Extracting table schemas locally...", time: 0.5 });
+        const schemaRes = await fetch("http://localhost:9999", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "schema", connection_string: connectionString }),
+          signal: controller.signal,
+        });
+        const schemaData = await schemaRes.json();
+        if (schemaData.status === "error") {
+          onEvent({ type: "agent_error", agent: "schema", message: schemaData.message });
+          return;
+        }
+
+        onEvent({ type: "agent_done", agent: "schema", data: { tables: schemaData.tables } });
+        onEvent({ type: "complete", message: "Database schema successfully mapped." });
+      } else if (action === "explain") {
+        onEvent({ type: "agent_start", agent: "explain", message: "Running EXPLAIN locally on your database...", time: 0.1 });
+
+        // Run Explain
+        const explainRes = await fetch("http://localhost:9999", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "explain", connection_string: connectionString, query: sql }),
+          signal: controller.signal,
+        });
+        const explainData = await explainRes.json();
+        if (explainData.status === "error") {
+          onEvent({ type: "agent_error", agent: "explain", message: explainData.message });
+          return;
+        }
+
+        onEvent({ type: "agent_done", agent: "explain", data: { plan: explainData.plan } });
+
+        // Run rest of optimization pipeline using cloud backend (AI rules and indexes)
+        onEvent({ type: "agent_start", agent: "parser", message: "Analyzing query structure via QueryMind Brain...", time: 0.4 });
+        
+        // Convert local columns to a schema DDL text
+        let schemaText = "";
+        try {
+          const globalSchemaRaw = localStorage.getItem("qm_global_schema");
+          if (globalSchemaRaw) {
+            const schemaObj = JSON.parse(globalSchemaRaw);
+            schemaText = schemaObj.map((t: any) => {
+              const cols = (t.column_details || []).map((c: any) => `${c.name} ${c.type}`).join(", ");
+              return `CREATE TABLE ${t.table} (${cols});`;
+            }).join("\n");
+          }
+        } catch {}
+
+        const analyzeRes = await fetch(`${API_BASE}/api/v1/analyze`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sql, dialect: dialect.toLowerCase(), schema: schemaText }),
+          signal: controller.signal,
+        });
+
+        if (!analyzeRes.ok) {
+          onEvent({ type: "complete", message: "Local query plan fetched. Cloud analysis offline." });
+          return;
+        }
+
+        const reader = analyzeRes.body?.getReader();
+        if (reader) {
+          const decoder = new TextDecoder();
+          let buffer = "";
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() || "";
+            for (const line of lines) {
+              if (line.startsWith("data: ")) {
+                const event: SSEEvent = JSON.parse(line.slice(6));
+                // Forward AI analysis events only (connector and explain was done locally)
+                if (event.agent !== "connector" && event.agent !== "schema" && event.agent !== "explain") {
+                  onEvent(event);
+                }
+              }
+            }
+          }
+        }
+        onEvent({ type: "complete", message: "Optimization analysis completed successfully." });
+      }
+    } catch (e: any) {
+      if (e.name !== "AbortError") {
+        onError?.("Could not reach local bridge. Please make sure to run 'python querymind_bridge.py' locally in your terminal.");
+      }
+    }
+  }, 0);
+
+  return controller;
+}
+
 /** Connect to DB — POST /api/v1/connect */
 export function connectDatabase(
   connectionString: string,
   onEvent: (event: SSEEvent) => void,
   onError?: (error: string) => void,
 ) {
+  if (connectionString.includes("localhost") || connectionString.includes("127.0.0.1")) {
+    return streamLocalBridge("schema", connectionString, "", "postgresql", onEvent, onError);
+  }
   return streamAnalysis("/api/v1/connect", { connection_string: connectionString }, onEvent, onError);
 }
 
@@ -119,6 +254,9 @@ export function explainQuery(
   onEvent: (event: SSEEvent) => void,
   onError?: (error: string) => void,
 ) {
+  if (connectionString.includes("localhost") || connectionString.includes("127.0.0.1")) {
+    return streamLocalBridge("explain", connectionString, sql, dialect, onEvent, onError);
+  }
   return streamAnalysis(
     "/api/v1/explain",
     { connection_string: connectionString, sql, dialect: dialect.toLowerCase() },

@@ -1,8 +1,35 @@
 """Agent 8: Database Connector — read-only connection to live databases."""
 
 import sqlite3
+import json
+import urllib.request
+import urllib.error
 from app.utils.sanitizer import is_safe_for_execution
 from app.config import Config
+
+
+def _request_bridge(bridge_url: str, action: str, payload: dict = None) -> dict:
+    if payload is None:
+        payload = {}
+    payload["action"] = action
+    
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        bridge_url,
+        data=data,
+        headers={"Content-Type": "application/json"}
+    )
+    
+    try:
+        with urllib.request.urlopen(req, timeout=Config.DB_CONNECT_TIMEOUT) as response:
+            res_data = json.loads(response.read().decode("utf-8"))
+            if res_data.get("status") == "error":
+                raise ValueError(res_data.get("message", "Bridge execution error"))
+            return res_data
+    except urllib.error.URLError as e:
+        raise ConnectionError(f"Failed to reach bridge at {bridge_url}: {e.reason}")
+    except Exception as e:
+        raise Exception(f"Bridge connection error: {str(e)}")
 
 
 def connect_and_execute(connection_string: str, query: str) -> dict:
@@ -15,7 +42,10 @@ def connect_and_execute(connection_string: str, query: str) -> dict:
 
     db_type = _detect_db_type(connection_string)
 
-    if db_type == "postgresql":
+    if db_type == "bridge":
+        res = _request_bridge(connection_string, "explain", {"query": query})
+        return {"plan": res.get("plan", []), "type": "bridge"}
+    elif db_type == "postgresql":
         return _execute_postgres(connection_string, query)
     elif db_type == "mysql":
         return _execute_mysql(connection_string, query)
@@ -29,7 +59,10 @@ def discover_schema(connection_string: str) -> dict:
     """Auto-discover database schema: tables, columns, indexes, row counts."""
     db_type = _detect_db_type(connection_string)
 
-    if db_type == "postgresql":
+    if db_type == "bridge":
+        res = _request_bridge(connection_string, "schema")
+        return {"tables": res.get("tables", []), "type": "bridge"}
+    elif db_type == "postgresql":
         return _discover_postgres(connection_string)
     elif db_type == "mysql":
         return _discover_mysql(connection_string)
@@ -43,7 +76,16 @@ def test_connection(connection_string: str) -> dict:
     """Test database connection and return basic info."""
     db_type = _detect_db_type(connection_string)
     try:
-        if db_type == "postgresql":
+        if db_type == "bridge":
+            _request_bridge(connection_string, "test")
+            return {
+                "status": "connected",
+                "type": "Bridge Tunnel",
+                "version": "1.0.0",
+                "database": "Local Database Bridge"
+            }
+
+        elif db_type == "postgresql":
             import psycopg2
             conn = psycopg2.connect(connection_string, connect_timeout=Config.DB_CONNECT_TIMEOUT)
             cur = conn.cursor()
@@ -83,7 +125,9 @@ def test_connection(connection_string: str) -> dict:
 
 
 def _detect_db_type(conn_str: str) -> str:
-    if conn_str.startswith(("postgresql://", "postgres://")):
+    if conn_str.startswith(("http://", "https://")):
+        return "bridge"
+    elif conn_str.startswith(("postgresql://", "postgres://")):
         return "postgresql"
     elif conn_str.startswith("mysql://"):
         return "mysql"
