@@ -1,4 +1,4 @@
-"""Agent 6: Index Advisor — recommends indexes based on query + schema analysis."""
+"""Agent 3: Index Advisor — recommends indexes based on query + schema analysis."""
 
 from app.services.groq_client import ask_groq
 

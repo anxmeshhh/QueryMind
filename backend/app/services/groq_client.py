@@ -22,13 +22,23 @@ def ask_groq(
     system: str = "You are a senior database engineer and SQL optimization expert. Keep responses highly concise, token-optimized, and return only the requested JSON/SQL structure without extra conversation.",
     max_tokens: int = None,
     json_mode: bool = False,
+    messages: list = None,
 ) -> str:
-    """Send a prompt to Groq and return the response text."""
+    """Send a prompt to Groq and return the response text.
+
+    Args:
+        prompt: User message (used when `messages` is not provided)
+        system: System prompt (used when `messages` is not provided)
+        max_tokens: Max tokens for the response
+        json_mode: Whether to request JSON output
+        messages: Full conversation history as a list of {role, content} dicts.
+                  When provided, `prompt` and `system` are ignored.
+    """
     client = _get_client()
 
     kwargs = {
         "model": Config.GROQ_MODEL,
-        "messages": [
+        "messages": messages if messages else [
             {"role": "system", "content": system},
             {"role": "user", "content": prompt},
         ],

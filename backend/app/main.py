@@ -13,6 +13,7 @@ from app.agents.orchestrator import (
     run_explain_analysis,
     run_batch_analysis,
 )
+from app.middleware import rate_limit, request_timer, add_timing_header
 
 
 def create_app() -> Flask:
@@ -22,6 +23,10 @@ def create_app() -> Flask:
 
     # CORS — whitelist origins
     CORS(app, origins=Config.ALLOWED_ORIGINS, supports_credentials=True)
+
+    # ── Middleware: Request timer ─────────────────────────
+    app.before_request(request_timer)
+    app.after_request(add_timing_header)
 
     # ── Security headers ─────────────────────────────────
     @app.after_request
@@ -95,7 +100,7 @@ def create_app() -> Flask:
             return jsonify({
                 "status": "sent",
                 "sandbox": not smtp_ok,
-                "code": code if not smtp_ok else None
+                "code": code if (not smtp_ok and Config.DEBUG) else None
             })
         except Exception as e:
             return jsonify({"error": str(e)}), 500
@@ -261,6 +266,7 @@ def create_app() -> Flask:
 
     # ── Quick Analyze (SSE) ──────────────────────────────
     @app.route("/api/v1/analyze", methods=["POST"])
+    @rate_limit
     def analyze():
         """Mode 1: Quick Analyze — paste SQL, get streaming analysis."""
         try:
@@ -299,6 +305,7 @@ def create_app() -> Flask:
 
     # ── Project Scan (SSE) ───────────────────────────────
     @app.route("/api/v1/scan", methods=["POST"])
+    @rate_limit
     def scan():
         """Mode 2: Scan Project — upload files, discover SQL queries."""
         try:
@@ -341,6 +348,7 @@ def create_app() -> Flask:
 
     # ── Database Connect (SSE) ───────────────────────────
     @app.route("/api/v1/connect", methods=["POST"])
+    @rate_limit
     def connect():
         """Mode 3: Connect — test connection and discover schema."""
         try:
@@ -409,6 +417,7 @@ def create_app() -> Flask:
 
     # ── Batch Analyze (SSE) ───────────────────────────────
     @app.route("/api/v1/analyze-batch", methods=["POST"])
+    @rate_limit
     def analyze_batch():
         """Batch analysis: analyze multiple queries with shared project context."""
         try:

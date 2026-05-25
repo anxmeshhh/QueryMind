@@ -1,4 +1,4 @@
-"""Agent 2: Database Connector — read-only connection to live databases."""
+"""Agent 8: Database Connector — read-only connection to live databases."""
 
 import sqlite3
 from app.utils.sanitizer import is_safe_for_execution

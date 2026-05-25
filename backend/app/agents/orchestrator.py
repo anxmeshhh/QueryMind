@@ -2,6 +2,7 @@
 
 import json
 import time
+import concurrent.futures
 
 from app.agents.parser_agent import parse_query
 from app.agents.antipattern_detector import detect_antipatterns
@@ -95,7 +96,6 @@ def run_quick_analysis(sql: str, schema_sql: str = "", dialect: str = "postgresq
     yield _sse_event({"type": "agent_start", "agent": "index", "message": "Analyzing index requirements & optimizing query in parallel..."})
     yield _sse_event({"type": "agent_start", "agent": "optimize", "message": "Analyzing query syntax & rewrite options..."})
 
-    import concurrent.futures
     t_parallel = time.time()
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
         future_index = executor.submit(advise_indexes, sql, metadata, schema, dialect)
@@ -322,7 +322,6 @@ def run_batch_analysis(queries: list, project_schema: list = None, dialect: str 
 
             issues = detect_antipatterns(sql, metadata)
 
-            import concurrent.futures
             with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
                 future_index = executor.submit(advise_indexes, sql, metadata, project_schema, dialect)
                 future_optimize = executor.submit(optimize_query, sql, metadata, issues, dialect, project_schema=project_schema)

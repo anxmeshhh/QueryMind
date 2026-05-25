@@ -1,4 +1,4 @@
-"""Agent 9: Schema Integrity Guard — validates recommendations against existing schema.
+"""Agent 6: Schema Integrity Guard — validates recommendations against existing schema.
 
 Prevents QueryMind from recommending changes that would break a well-designed
 database. Cross-references AI recommendations against the project's existing

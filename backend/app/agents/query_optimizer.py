@@ -1,4 +1,4 @@
-"""Agent 7: Query Optimizer — rewrites SQL for better performance."""
+"""Agent 4: Query Optimizer — rewrites SQL for better performance."""
 
 from app.agents.parser_agent import optimize_with_sqlglot
 from app.services.groq_client import ask_groq
@@ -130,9 +130,9 @@ def _diff_changes(original: str, optimized: str) -> list:
 
     if "SELECT *" in orig_upper and "SELECT *" not in opt_upper:
         changes.append("Replaced SELECT * with specific columns")
-    if ", " in orig_upper.split("FROM")[0] if "FROM" in orig_upper else "" and "JOIN" in opt_upper:
-        if "JOIN" not in orig_upper:
-            changes.append("Converted implicit JOINs to explicit JOIN ... ON")
+    from_clause = orig_upper.split("FROM")[0] if "FROM" in orig_upper else ""
+    if ", " in from_clause and "JOIN" not in orig_upper and "JOIN" in opt_upper:
+        changes.append("Converted implicit JOINs to explicit JOIN ... ON")
     if "LIMIT" not in orig_upper and "LIMIT" in opt_upper:
         changes.append("Added LIMIT clause")
     if orig_upper.count("SELECT") > opt_upper.count("SELECT"):

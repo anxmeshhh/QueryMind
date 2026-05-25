@@ -1,4 +1,4 @@
-"""Agent 4: SQL Parser — parse SQL into AST using sqlglot."""
+"""Agent 1: SQL Parser — parse SQL into AST using sqlglot."""
 
 import sqlglot
 from sqlglot import exp

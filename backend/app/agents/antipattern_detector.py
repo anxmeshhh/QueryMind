@@ -1,4 +1,4 @@
-"""Agent 5: Anti-Pattern Detector — 20 rule-based SQL anti-pattern detection."""
+"""Agent 2: Anti-Pattern Detector — 20 rule-based SQL anti-pattern detection."""
 
 import re
 import sqlglot

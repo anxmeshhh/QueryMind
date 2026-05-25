@@ -140,10 +140,10 @@ RULES:
     _sessions[session_id] = history
 
     try:
-        # Build messages for Groq
+        # Build messages for Groq — pass full conversation history
         response_text = ask_groq(
             prompt=message,
-            system=system_prompt,
+            messages=history,
             max_tokens=1024,
         )
 

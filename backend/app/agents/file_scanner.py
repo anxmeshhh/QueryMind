@@ -1,4 +1,4 @@
-"""Agent 1: File Scanner — scans code files for embedded SQL queries and schema definitions."""
+"""Agent 7: File Scanner — scans code files for embedded SQL queries and schema definitions."""
 
 import os
 import re

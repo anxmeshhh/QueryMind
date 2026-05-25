@@ -1,4 +1,4 @@
-"""Agent 8: Performance Predictor — estimates query cost, performance impact, and simulates explain plans."""
+"""Agent 5: Performance Predictor — estimates query cost, performance impact, and simulates explain plans."""
 
 import json
 from app.services.groq_client import ask_groq
