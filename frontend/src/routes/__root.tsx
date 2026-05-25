@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   Outlet,
@@ -127,6 +128,23 @@ function OtpGate({ children }: { children: React.ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+
+  useEffect(() => {
+    const handleDynamicImportError = (e: ErrorEvent | PromiseRejectionEvent) => {
+      const message = "message" in e ? e.message : (e.reason?.message || "");
+      if (message.includes("Failed to fetch dynamically imported module")) {
+        console.warn("Dynamic import failed (possibly due to redeployment). Reloading page...");
+        window.location.reload();
+      }
+    };
+
+    window.addEventListener("error", handleDynamicImportError);
+    window.addEventListener("unhandledrejection", handleDynamicImportError);
+    return () => {
+      window.removeEventListener("error", handleDynamicImportError);
+      window.removeEventListener("unhandledrejection", handleDynamicImportError);
+    };
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
