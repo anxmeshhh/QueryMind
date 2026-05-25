@@ -555,17 +555,44 @@ function ConnectPage() {
           />
 
           {(url.includes("localhost") || url.includes("127.0.0.1")) && (
-            <div className="mt-3">
-              <label className="block text-[11px] font-mono text-text-muted mb-1">
-                BRIDGE ACCESS TOKEN (Printed by querymind_bridge.py)
-              </label>
-              <input
-                type="password"
-                value={bridgeToken}
-                onChange={(e) => setBridgeToken(e.target.value)}
-                placeholder="Paste bridge token here..."
-                className="w-full bg-code border border-border rounded-md px-3 py-2.5 font-mono text-[13px] text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-primary"
-              />
+            <div className="space-y-3 mt-3">
+              <div>
+                <label className="block text-[11px] font-mono text-text-muted mb-1">
+                  BRIDGE ACCESS TOKEN (Printed by querymind_bridge.py)
+                </label>
+                <input
+                  type="password"
+                  value={bridgeToken}
+                  onChange={(e) => setBridgeToken(e.target.value)}
+                  placeholder="Paste bridge token here..."
+                  className="w-full bg-code border border-border rounded-md px-3 py-2.5 font-mono text-[13px] text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-primary"
+                />
+              </div>
+
+              <div className="p-4 rounded-lg bg-code/50 border border-border space-y-3">
+                <div className="text-[12px] font-semibold text-text-primary flex items-center gap-1.5">
+                  <span>🔌</span>
+                  <span>How to connect your local database</span>
+                </div>
+                <div className="text-[11px] text-text-muted leading-relaxed">
+                  Run one of these commands in your terminal to download and run the secure bridge client automatically:
+                </div>
+                
+                <div className="space-y-3 text-[11px] font-mono">
+                  <div className="space-y-1">
+                    <span className="text-text-muted">macOS / Linux:</span>
+                    <pre className="bg-code p-2.5 rounded border border-border/60 text-text-primary select-all overflow-x-auto whitespace-pre-wrap font-mono">
+                      curl -sO https://raw.githubusercontent.com/anxmeshhh/QueryMind/main/querymind_bridge.py && python querymind_bridge.py
+                    </pre>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-text-muted">Windows (PowerShell):</span>
+                    <pre className="bg-code p-2.5 rounded border border-border/60 text-text-primary select-all overflow-x-auto whitespace-pre-wrap font-mono">
+                      Invoke-WebRequest -Uri "https://raw.githubusercontent.com/anxmeshhh/QueryMind/main/querymind_bridge.py" -OutFile "querymind_bridge.py"; python querymind_bridge.py
+                    </pre>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
